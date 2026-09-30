@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker D1 Types for Qiyue Ledger
+ * Cloudflare Worker D1 Types for Qiyue Ledger (Production)
  */
 
 export interface D1PreparedStatement {
@@ -24,7 +24,7 @@ export interface Env {
 export interface SyncPayload {
   format?: string;
   version?: number;
-  revision?: number;
+  expectedRevision?: number;
   salaries?: any[];
   overtimes?: any[];
   gifts?: any[];

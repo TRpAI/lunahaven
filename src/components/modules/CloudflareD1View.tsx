@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  Activity,
   Check,
   CheckCircle2,
   Cloud,
@@ -8,15 +9,13 @@ import {
   Download,
   HelpCircle,
   RefreshCw,
-  Sparkles,
   Terminal,
-  Wrench,
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import {
   CLOUDFLARE_D1_SCHEMA_SQL,
+  checkCloudflareHealth,
   generateCloudflareD1SqlDump,
-  initCloudflareD1Database,
   pullFromCloudflareWorker,
 } from '../../utils/d1Sync';
 import { triggerFileDownload } from '../../utils/exportImport';
@@ -50,8 +49,11 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   const [pullLoading, setPullLoading] = useState(false);
   const [pullMsg, setPullMsg] = useState<string | null>(null);
 
-  const [initLoading, setInitLoading] = useState(false);
-  const [initMsg, setInitMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [healthLoading, setHealthLoading] = useState(false);
+  const [healthStatusResult, setHealthStatusResult] = useState<{
+    ok: boolean;
+    text: string;
+  } | null>(null);
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,7 +64,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         apiToken: apiTokenInput.trim(),
       },
     });
-    alert('Cloudflare D1 同步配置已保存！');
+    alert('Cloudflare D1 生产同步配置已保存！');
   };
 
   const handleCopy = (text: string, sectionKey: string) => {
@@ -76,34 +78,36 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     triggerFileDownload(sql, `qiyue_ledger_d1_backup_${new Date().toISOString().slice(0, 10)}.sql`, 'application/sql;charset=utf-8');
   };
 
-  const handleInitDatabase = async () => {
+  const handleRunHealthCheck = async () => {
     const url = workerUrlInput.trim() || d1Config.workerUrl;
-    const token = apiTokenInput.trim() || d1Config.apiToken;
 
     if (!url) {
-      alert('请先填入并保存 Cloudflare Worker API URL');
+      alert('请先填入 Cloudflare Worker API URL');
       return;
     }
 
-    setInitLoading(true);
-    setInitMsg(null);
+    setHealthLoading(true);
+    setHealthStatusResult(null);
     try {
-      const res = await initCloudflareD1Database(url, token);
-      setInitMsg({
-        type: 'success',
-        text: res.message || 'D1 数据库表结构（salaries, vehicles, sync_meta 等）已全部初始化成功！',
-      });
-      // 成功初始化后，自动尝试触发一次同步
-      setTimeout(() => {
-        onManualSync();
-      }, 500);
+      const res = await checkCloudflareHealth(url);
+      if (res.ok) {
+        setHealthStatusResult({
+          ok: true,
+          text: `🟢 状态正常: Worker 服务就绪 · D1 数据库正常 (Schema v${res.schemaVersion ?? 2}, Revision ${res.revision ?? 1})`,
+        });
+      } else {
+        setHealthStatusResult({
+          ok: false,
+          text: `🔴 健康检查异常: ${res.message || '数据库未连接或未执行迁移'}`,
+        });
+      }
     } catch (err: any) {
-      setInitMsg({
-        type: 'error',
-        text: `初始化失败: ${err.message}`,
+      setHealthStatusResult({
+        ok: false,
+        text: `🔴 无法连接至该节点: ${err.message}`,
       });
     } finally {
-      setInitLoading(false);
+      setHealthLoading(false);
     }
   };
 
@@ -119,7 +123,8 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     setPullLoading(true);
     setPullMsg(null);
     try {
-      const pulled = await pullFromCloudflareWorker(workerUrlInput, apiTokenInput);
+      const res = await pullFromCloudflareWorker(workerUrlInput, apiTokenInput);
+      const pulled = res.data;
       onImportData({
         ...fullData,
         salaries: (pulled.salaries as any) || fullData.salaries,
@@ -129,15 +134,13 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         fuels: (pulled.fuels as any) || fullData.fuels,
         maintenances: (pulled.maintenances as any) || fullData.maintenances,
       });
-      setPullMsg('成功从 Cloudflare D1 恢复并合并数据！');
+      setPullMsg(`成功从 Cloudflare D1 拉取并合并数据！(${res.isIncremental ? '增量模式' : '全量模式'})`);
     } catch (err: any) {
       setPullMsg(`拉取失败: ${err.message}`);
     } finally {
       setPullLoading(false);
     }
   };
-
-  const isTableMissingError = syncError && syncError.includes('no such table');
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
@@ -152,7 +155,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
               Cloudflare D1 边缘数据库中心
             </h1>
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
-              原生支持 Cloudflare Workers + D1 边缘 SQLite · 本地优先沙盒 · 双向自愈同步
+              生产级架构 · 增量同步与乐观锁 · 严格 Migration 版本控制 · 审计日志
             </p>
           </div>
         </div>
@@ -160,23 +163,23 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         <div className="flex items-center gap-2">
           {d1Config.workerUrl && (
             <button
-              onClick={handleInitDatabase}
-              disabled={initLoading}
+              onClick={handleRunHealthCheck}
+              disabled={healthLoading}
               className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
-              title="向 Worker 发送指令自动执行 CREATE TABLE IF NOT EXISTS 初始化建表"
+              title="向 Worker /api/health 端点发送请求，探测节点与 D1 数据库健康状态"
             >
-              <Wrench className={`w-3.5 h-3.5 ${initLoading ? 'animate-spin' : ''}`} />
-              <span>{initLoading ? '初始化中...' : '一键修复 D1 表结构'}</span>
+              <Activity className={`w-3.5 h-3.5 ${healthLoading ? 'animate-pulse text-amber-500' : ''}`} />
+              <span>{healthLoading ? '探测中...' : '健康诊断'}</span>
             </button>
           )}
 
           <button
             onClick={handleExportSqlFile}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
-            title="生成可以直接用 wrangler d1 execute 导入的 SQL 脚本"
+            title="生成可以直接用 wrangler d1 execute 导入的完整 SQL 备份脚本"
           >
             <Download className="w-3.5 h-3.5" />
-            <span>导出 D1 .sql 脚本</span>
+            <span>导出 D1 .sql 备份</span>
           </button>
         </div>
       </div>
@@ -188,14 +191,14 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
             <div className="flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span className="text-[11px] font-bold tracking-wider text-zinc-400 uppercase">
-                Cloudflare D1 Architecture
+                Cloudflare D1 Production Hub
               </span>
             </div>
             <h3 className="text-base font-bold text-white">
-              {d1Config.workerUrl ? '已绑定 Cloudflare D1 远程节点' : '当前处于本地离线沙盒存储模式'}
+              {d1Config.workerUrl ? '已连接 Cloudflare D1 边缘节点' : '当前处于本地离线沙盒存储模式'}
             </h3>
             <p className="text-xs text-zinc-400 max-w-xl leading-relaxed">
-              数据 100% 优先保存在本地沙盒中。配置 Cloudflare Worker API 密钥后，系统可将数据双向无缝同步至您的私有 D1 分布式数据库。
+              数据优先保存在本地沙盒副本。配置 Worker 凭据后，将通过增量同步与 D1 数据库进行双向安全通信。
             </p>
           </div>
 
@@ -228,40 +231,31 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
           <div className="mt-4 pt-3 border-t border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
             <span>上次同步成功时间: {d1Config.lastSyncTime}</span>
             <span className="text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> 数据库状态就绪
+              <CheckCircle2 className="w-3.5 h-3.5" /> 数据库状态就绪 (v2.1)
             </span>
           </div>
         )}
 
-        {initMsg && (
+        {healthStatusResult && (
           <div
             className={`mt-3 p-3 rounded-xl text-xs flex items-center justify-between gap-3 ${
-              initMsg.type === 'success'
+              healthStatusResult.ok
                 ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
                 : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
             }`}
           >
-            <span>{initMsg.text}</span>
+            <span>{healthStatusResult.text}</span>
           </div>
         )}
 
         {syncError && (
-          <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-2">
-            <div className="flex items-center justify-between">
-              <span>同步出错: {syncError}</span>
+          <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-1">
+            <div className="flex items-center justify-between font-medium">
+              <span>同步异常: {syncError}</span>
             </div>
-            {isTableMissingError && (
-              <div className="pt-2 border-t border-rose-500/20 flex items-center justify-between">
-                <span className="text-rose-200">提示: D1 数据库尚未执行建表初始化 (缺少 sync_meta 等表)</span>
-                <button
-                  onClick={handleInitDatabase}
-                  disabled={initLoading}
-                  className="px-3 py-1 rounded-lg bg-rose-500 text-white text-xs font-semibold hover:bg-rose-600 transition-colors cursor-pointer shrink-0"
-                >
-                  {initLoading ? '正在初始化...' : '点击立即初始化 D1 表结构'}
-                </button>
-              </div>
-            )}
+            <p className="text-[11px] text-rose-300/80">
+              请检查 Worker Secret 设置 (API_TOKEN) 以及是否已运行 <code className="font-mono bg-rose-950/40 px-1 py-0.5 rounded">wrangler d1 migrations apply</code>。
+            </p>
           </div>
         )}
 
@@ -295,7 +289,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
           }`}
         >
           <Terminal className="w-3.5 h-3.5" />
-          <span>D1 SQL Schema</span>
+          <span>D1 生产 Schema</span>
         </button>
 
         <button
@@ -307,7 +301,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
           }`}
         >
           <HelpCircle className="w-3.5 h-3.5" />
-          <span>3分钟部署指南</span>
+          <span>3分钟生产部署指南</span>
         </button>
       </div>
 
@@ -318,21 +312,9 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
             <div>
               <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Cloudflare Worker API 端点配置</h3>
               <p className="text-xs text-zinc-400 dark:text-zinc-500">
-                如果您已经在 Cloudflare 部署了附带的 Worker API 脚本，可在此填入 Worker 域名和鉴权 Token。
+                配置您在 Cloudflare 部署的私有 Worker API 节点与加密 Bearer Token 访问密钥。
               </p>
             </div>
-
-            {workerUrlInput && (
-              <button
-                type="button"
-                onClick={handleInitDatabase}
-                disabled={initLoading}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold transition-all cursor-pointer disabled:opacity-50 shrink-0 self-start sm:self-auto"
-              >
-                <Sparkles className={`w-3.5 h-3.5 ${initLoading ? 'animate-spin' : ''}`} />
-                <span>{initLoading ? '正在初始化...' : '一键初始化 / 修复表结构'}</span>
-              </button>
-            )}
           </div>
 
           <form onSubmit={handleSaveConfig} className="space-y-4 text-xs max-w-xl">
@@ -379,9 +361,9 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Cloudflare D1 (SQLite) 建表语句</h3>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Cloudflare D1 生产 Schema DDL</h3>
               <p className="text-xs text-zinc-400 mt-0.5">
-                包含薪资、工时、人情、车辆、加油与维保完整建表 DDL 及 sync_meta
+                包含薪资、工时、人情、车辆、加油、维保、复合索引及 audit_logs 审计表
               </p>
             </div>
             <button
@@ -399,14 +381,14 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </div>
       )}
 
-      {/* 3. 3分钟部署教程指南 */}
+      {/* 3. 3分钟生产部署教程指南 */}
       {activeTab === 'tutorial' && (
         <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-            极简 4 步部署 Cloudflare Worker + D1 边缘备份云
+            极简 4 步部署生产级 Cloudflare Worker + D1 边缘数据库
           </h3>
           <p className="text-zinc-500 dark:text-zinc-400">
-            本项目已在代码仓库中独立拆分了完整规范的 <code className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 font-mono text-zinc-800 dark:text-zinc-200">worker/</code> 目录（内含 migrations 迁移脚本、CORS 动态白名单和安全 Secret 鉴权）。
+            本项目已在代码仓库中独立拆分了完整规范的 <code className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 font-mono text-zinc-800 dark:text-zinc-200">worker/</code> 目录（内含 migrations 迁移版本管理、生产严格 CORS 与 Secret 鉴权）。
           </p>
 
           <div className="space-y-3">
@@ -422,9 +404,9 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
             </div>
 
             <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
-              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 2: 执行数据库版本迁移 (Migrations)</div>
+              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 2: 规范执行数据库版本迁移 (Migrations)</div>
               <p className="text-zinc-500 dark:text-zinc-400">
-                运行项目内置的 0001 初始化建表与 0002 sync_meta 元数据迁移（或部署后在网页端点击「一键初始化表结构」）：
+                运行项目内置的 0001 初始化建表、0002 sync_meta 元数据和 0003 生产复合索引与审计表迁移：
               </p>
               <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono mt-1 text-[11px] overflow-x-auto">
 {`cd worker
@@ -435,7 +417,7 @@ npx wrangler d1 migrations apply qiyue_ledger_db --remote`}
             <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
               <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 3: 设置安全密钥并部署上线</div>
               <p className="text-zinc-500 dark:text-zinc-400">
-                通过 Cloudflare Secret 加密保护 API 鉴权密钥（代码中不存任何明文 Token）：
+                通过 Cloudflare Secret 加密保护 API 鉴权密钥（生产环境强制认证，不存任何明文 Token）：
               </p>
               <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono mt-1 text-[11px] overflow-x-auto">
 {`# 1. 交互式输入自定义的 API 访问凭据 (如: my-secret-2026)
@@ -447,9 +429,9 @@ npx wrangler deploy`}
             </div>
 
             <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
-              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 4: 回到网页填入端点与密钥</div>
+              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 4: 回到网页填入端点并测试健康状态</div>
               <p className="text-zinc-500 dark:text-zinc-400">
-                将部署完成后得到的 Worker URL（例如 <code className="font-mono text-zinc-300">https://qiyue-ledger-api.your-account.workers.dev</code>）与刚才设置的 <code className="font-mono text-zinc-300">API_TOKEN</code> 填入上方「连接设置」，即可畅享多设备秒级云端备份与双向同步！
+                将部署完成后得到的 Worker URL（例如 <code className="font-mono text-zinc-300">https://qiyue-ledger-api.your-account.workers.dev</code>）与刚才设置的 <code className="font-mono text-zinc-300">API_TOKEN</code> 填入上方「连接设置」，点击右上角【健康诊断】确认状态正常即可畅享多设备秒级云端备份与增量同步！
               </p>
             </div>
           </div>
