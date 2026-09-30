@@ -513,19 +513,19 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* 5. 危险区：数据重置 */}
-      <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex items-center justify-between text-xs">
+      <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 text-xs">
         <div>
           <div className="font-semibold text-zinc-900 dark:text-zinc-100">数据管理</div>
           <p className="text-zinc-400 mt-0.5">重置为标准样例数据或一键清空全部记录</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
           <button
             onClick={() => {
               if (window.confirm('确定要重置为初始演示数据吗？当前数据将被覆盖。')) {
                 onResetDemo();
               }
             }}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer w-full sm:w-auto"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>重置样例</span>
@@ -536,7 +536,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onClearAll();
               }
             }}
-            className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer w-full sm:w-auto"
           >
             <Trash2 className="w-3.5 h-3.5" />
             <span>清空数据</span>
