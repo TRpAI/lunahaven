@@ -1,0 +1,6 @@
+{
+  "name": "栖月账本 - 个人财务与生活管理 (Cloudflare D1)",
+  "description": "专为极简高效打造的个人隐私财务与生活记录系统，支持工资薪酬、五险一金、加班工时、人情随礼、汽车加油与保养记录，支持Cloudflare D1同步、图表分析与离线PWA安装。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

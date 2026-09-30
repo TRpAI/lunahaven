@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="50%" stop-color="#1e1b4b" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#6366f1" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background Rounded Squircle -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGrad)" />
+  
+  <!-- Inner Glow Ring -->
+  <rect x="16" y="16" width="480" height="480" rx="116" fill="none" stroke="rgba(255,255,255,0.12)" stroke-width="4" />
+  
+  <!-- Stylized Ledger / Shield / Crescent Moon Symbol -->
+  <g transform="translate(106, 96)">
+    <!-- Shield / Card Base -->
+    <path d="M 150 20 C 70 20 20 70 20 150 C 20 240 100 290 150 310 C 200 290 280 240 280 150 C 280 70 230 20 150 20 Z" fill="rgba(255,255,255,0.06)" stroke="url(#accentGrad)" stroke-width="12" stroke-linejoin="round" />
+    
+    <!-- Crescent Moon Curve (栖月) -->
+    <path d="M 170 80 C 130 90 100 130 100 175 C 100 220 135 255 180 260 C 140 250 110 215 110 175 C 110 135 135 100 170 80 Z" fill="url(#goldGrad)" opacity="0.95" />
+    
+    <!-- Chart Growth Bars & Ledger Lines inside Shield -->
+    <rect x="75" y="210" width="18" height="45" rx="9" fill="#38bdf8" />
+    <rect x="105" y="180" width="18" height="75" rx="9" fill="#60a5fa" />
+    <rect x="135" y="145" width="18" height="110" rx="9" fill="#818cf8" />
+    <rect x="165" y="115" width="18" height="140" rx="9" fill="#a78bfa" />
+    <rect x="195" y="90" width="18" height="165" rx="9" fill="#34d399" />
+    
+    <!-- Sparkle Accent -->
+    <circle cx="215" cy="70" r="10" fill="#fcd34d" />
+  </g>
+</svg>

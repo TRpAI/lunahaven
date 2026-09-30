@@ -1,0 +1,16 @@
+name = "qiyue-ledger-api"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# Cloudflare D1 边缘数据库绑定
+[[d1_databases]]
+binding = "DB"
+database_name = "qiyue_ledger_db"
+database_id = "YOUR_D1_DATABASE_ID"
+
+# 环境变量配置
+# 生产环境 API 访问 Token 建议通过命令行加密存储：
+# wrangler secret put API_TOKEN
+[vars]
+# 允许跨域的前端来源，例如: https://ledger.yourdomain.com
+ALLOWED_ORIGIN = "*"
