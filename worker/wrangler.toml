@@ -6,7 +6,7 @@ compatibility_date = "2024-09-23"
 [[d1_databases]]
 binding = "DB"
 database_name = "qiyue_ledger_db"
-database_id = "YOUR_D1_DATABASE_ID"
+database_id = "3652e1ff-356f-451e-b47b-ab4bdca3dad5"
 
 # 环境变量配置
 # 生产环境 API 访问 Token 建议通过命令行加密存储：
