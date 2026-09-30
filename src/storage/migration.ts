@@ -30,8 +30,15 @@ async function isIndexedDBPopulated(): Promise<boolean> {
 export async function migrateFromLocalStorageIfNeeded(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
 
+  // 若已经完成初始化或用户已主动清空数据，切勿重复注入或重新生成示例数据
+  const isMigrated = localStorage.getItem(MIGRATION_FLAG_KEY);
+  if (isMigrated === 'true') {
+    return false;
+  }
+
   const isPopulated = await isIndexedDBPopulated();
   if (isPopulated) {
+    localStorage.setItem(MIGRATION_FLAG_KEY, 'true');
     return false;
   }
 
@@ -149,6 +156,9 @@ export async function clearAllIndexedDB(): Promise<void> {
     dbClear(STORES.MAINTENANCES),
     dbClear(STORES.SYNC_QUEUE),
   ]);
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(MIGRATION_FLAG_KEY, 'true');
+  }
   await syncMetaRepository.incrementRevision();
 }
 

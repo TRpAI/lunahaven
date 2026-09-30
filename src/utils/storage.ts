@@ -599,24 +599,14 @@ export function clearAllLedgerData(): LedgerFullData {
     salaries: [],
     overtimes: [],
     gifts: [],
-    vehicles: [
-      {
-        id: 'v-default',
-        name: '我的第一辆车',
-        plateNumber: '',
-        fuelType: 'gasoline_92',
-        tankCapacity: 50,
-        initialOdometer: 0,
-        currentOdometer: 0,
-        maintenanceIntervalKm: 10000,
-        maintenanceIntervalDays: 180,
-        createdAt: new Date().toISOString(),
-      },
-    ],
+    vehicles: [],
     fuels: [],
     maintenances: [],
-    settings: DEFAULT_SETTINGS,
-    version: '1.0.0',
+    settings: {
+      ...DEFAULT_SETTINGS,
+      activeVehicleId: '',
+    },
+    version: '2.0.0',
     exportedAt: new Date().toISOString(),
   };
   saveLedgerData(empty);

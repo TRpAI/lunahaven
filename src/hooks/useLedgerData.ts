@@ -301,6 +301,11 @@ export function useLedgerData() {
   const clearAll = useCallback(async () => {
     await clearAllIndexedDB();
     clearAllLedgerData();
+    const cleanSettings: AppSettings = {
+      ...data.settings,
+      activeVehicleId: '',
+    };
+    await settingsRepository.saveSettings(cleanSettings).catch(console.error);
     const empty: LedgerFullData = {
       salaries: [],
       overtimes: [],
@@ -308,7 +313,7 @@ export function useLedgerData() {
       vehicles: [],
       fuels: [],
       maintenances: [],
-      settings: data.settings,
+      settings: cleanSettings,
       version: '2.0.0',
       exportedAt: new Date().toISOString(),
     };

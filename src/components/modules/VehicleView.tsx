@@ -63,50 +63,48 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
 
-  // Active Vehicle
-  const currentVehicle = vehicles.find((v) => v.id === activeVehicleId) || vehicles[0] || {
-    id: 'v-1',
-    name: '我的车辆',
-    plateNumber: '京A·8899D',
-    fuelType: 'electric',
-    tankCapacity: 100,
-    initialOdometer: 10000,
-    currentOdometer: 24680,
-    maintenanceIntervalKm: 10000,
-    maintenanceIntervalDays: 180,
-    createdAt: new Date().toISOString(),
-  };
+  // Active Vehicle (若已清空则为 null，杜绝虚假默认车辆与假里程)
+  const currentVehicle: VehicleProfile | null = useMemo(() => {
+    if (vehicles.length === 0) return null;
+    return vehicles.find((v) => v.id === activeVehicleId) || vehicles[0];
+  }, [vehicles, activeVehicleId]);
 
   // 车辆关联加油与维保记录
   const vehicleFuels = useMemo(() => {
+    if (!currentVehicle) return [];
     return fuels.filter((f) => f.vehicleId === currentVehicle.id);
-  }, [fuels, currentVehicle.id]);
+  }, [fuels, currentVehicle]);
 
   const vehicleMaintenances = useMemo(() => {
+    if (!currentVehicle) return [];
     return maintenances.filter((m) => m.vehicleId === currentVehicle.id);
-  }, [maintenances, currentVehicle.id]);
+  }, [maintenances, currentVehicle]);
 
   // 最新表显里程
-  const latestFuelOdo = vehicleFuels.length > 0 ? vehicleFuels[0].odometer : currentVehicle.currentOdometer;
-  const healthStatus = getVehicleHealthStatus(currentVehicle, latestFuelOdo, vehicleMaintenances);
+  const latestFuelOdo = currentVehicle
+    ? (vehicleFuels.length > 0 ? vehicleFuels[0].odometer : currentVehicle.currentOdometer)
+    : 0;
+  const healthStatus = currentVehicle
+    ? getVehicleHealthStatus(currentVehicle, latestFuelOdo, vehicleMaintenances)
+    : null;
 
   // 加油表单
   const [fuelForm, setFuelForm] = useState({
     date: new Date().toISOString().slice(0, 10),
-    odometer: latestFuelOdo > 0 ? latestFuelOdo + 350 : 25000,
-    fuelAmount: currentVehicle.fuelType === 'electric' ? 65 : 45,
-    unitPrice: currentVehicle.fuelType === 'electric' ? 1.35 : 8.35,
-    totalCost: currentVehicle.fuelType === 'electric' ? 87.75 : 375.75,
+    odometer: latestFuelOdo > 0 ? latestFuelOdo + 350 : 0,
+    fuelAmount: currentVehicle?.fuelType === 'electric' ? 50 : 40,
+    unitPrice: currentVehicle?.fuelType === 'electric' ? 1.35 : 8.35,
+    totalCost: currentVehicle?.fuelType === 'electric' ? 67.5 : 334.0,
     isFullTank: true,
-    station: currentVehicle.fuelType === 'electric' ? '特来电超充站' : '中国石化',
-    fuelType: currentVehicle.fuelType === 'electric' ? '快充 (kWh)' : '95# 汽油',
+    station: currentVehicle?.fuelType === 'electric' ? '特来电超充站' : '中国石化',
+    fuelType: currentVehicle?.fuelType === 'electric' ? '快充 (kWh)' : '95# 汽油',
     notes: '',
   });
 
   // 维保表单
   const [maintForm, setMaintForm] = useState({
     date: new Date().toISOString().slice(0, 10),
-    odometer: latestFuelOdo || 25000,
+    odometer: latestFuelOdo || 0,
     category: 'routine' as MaintenanceCategory,
     title: '常规小保养 (机油机滤)',
     itemsStr: '全合成机油4L, 品牌机油滤清器',
@@ -114,7 +112,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     partsCost: 360,
     laborCost: 80,
     totalCost: 440,
-    nextServiceOdometer: (latestFuelOdo || 25000) + 10000,
+    nextServiceOdometer: (latestFuelOdo || 0) + 10000,
     nextServiceDate: '',
     notes: '',
   });
@@ -124,8 +122,8 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     name: '',
     plateNumber: '',
     fuelType: 'gasoline_95' as VehicleFuelType,
-    tankCapacity: 55,
-    initialOdometer: 10000,
+    tankCapacity: 50,
+    initialOdometer: 0,
     maintenanceIntervalKm: 10000,
     maintenanceIntervalDays: 180,
   });
