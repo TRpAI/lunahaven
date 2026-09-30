@@ -4,11 +4,14 @@ import { calculateSalaryBreakdown, DEFAULT_INSURANCE_RATES } from './taxCalculat
 
 const STORAGE_KEY = 'qiyue_ledger_v1';
 
+const DEMO_PIN_HASH = 'cWl5dWVfbWFzdGVyXzEyMzQ1Nl9hdXRoX3Yy';
+
 export const DEFAULT_SETTINGS: AppSettings = {
   theme: 'system',
   currencySymbol: '¥',
   isPinLockEnabled: true,
-  pinHash: 'cWl5dWVfbWFzdGVyXzEyMzQ1Nl9hdXRoX3Yy', // 默认密码 123456
+  pinHash: '', // 生产环境无默认密码，首次登入强制新建自定义主密码
+  passwordSalt: '',
   autoLockMinutes: 15,
   privacyMaskNumbers: false,
   activeVehicleId: 'v-1',
@@ -544,6 +547,13 @@ export function loadLedgerData(): LedgerFullData {
       return initial;
     }
     const parsed = JSON.parse(raw);
+    const mergedSettings = { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) };
+    // 若原本地缓存中仍存留演示默认密码 (123456)，彻底清除并强制首次新建
+    if (mergedSettings.pinHash === DEMO_PIN_HASH) {
+      mergedSettings.pinHash = '';
+      mergedSettings.passwordSalt = '';
+    }
+
     return {
       salaries: parsed.salaries || [],
       overtimes: parsed.overtimes || [],
@@ -551,7 +561,7 @@ export function loadLedgerData(): LedgerFullData {
       vehicles: parsed.vehicles || [],
       fuels: parsed.fuels || [],
       maintenances: parsed.maintenances || [],
-      settings: { ...DEFAULT_SETTINGS, ...(parsed.settings || {}) },
+      settings: mergedSettings,
       version: parsed.version || '1.0.0',
       exportedAt: parsed.exportedAt || new Date().toISOString(),
     };

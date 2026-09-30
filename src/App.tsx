@@ -51,7 +51,6 @@ export default function App() {
     verifyPassword,
     verify2FACode,
     setMasterPassword,
-    resetToDefaultPassword,
     enable2FA,
     disable2FA,
     lockNow,
@@ -89,7 +88,6 @@ export default function App() {
           onVerifyPassword={verifyPassword}
           onVerify2FACode={verify2FACode}
           onSetPassword={setMasterPassword}
-          onResetToDefault={resetToDefaultPassword}
         />
       )}
 

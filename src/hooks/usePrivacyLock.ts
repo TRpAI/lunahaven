@@ -3,16 +3,20 @@ import { AppSettings } from '../types';
 import { hashPassword, verifyPasswordHash } from '../utils/crypto';
 import { verifyTOTPCode } from '../utils/totp';
 
+const DEMO_PIN_HASH = 'cWl5dWVfbWFzdGVyXzEyMzQ1Nl9hdXRoX3Yy';
+
 export function usePrivacyLock(
   settings: AppSettings,
   onUpdateSettings: (settings: Partial<AppSettings>) => void
 ) {
-  const isLockEnabled = settings.isPinLockEnabled !== false && Boolean(settings.pinHash);
+  // 生产环境安全策略：有效自定义密码必须存在且不能是遗留的演示弱哈希
+  const hasPassword = Boolean(settings.pinHash && settings.pinHash !== DEMO_PIN_HASH);
   const is2FAEnabled = Boolean(settings.isTwoFactorEnabled && settings.twoFactorSecret);
 
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
-    if (!isLockEnabled) {
-      return true;
+    // 首次登入无密码时，强制未解锁状态，阻断访问并引导新建主密码
+    if (!hasPassword) {
+      return false;
     }
     const sessionAuth = sessionStorage.getItem('qiyue_session_unlocked');
     return sessionAuth === 'true';
@@ -25,8 +29,10 @@ export function usePrivacyLock(
   };
 
   useEffect(() => {
-    if (!isLockEnabled) {
-      setIsUnlocked(true);
+    // 若未创建密码，不可解锁
+    if (!hasPassword) {
+      setIsUnlocked(false);
+      sessionStorage.removeItem('qiyue_session_unlocked');
       return;
     }
 
@@ -42,7 +48,7 @@ export function usePrivacyLock(
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [isUnlocked, isLockEnabled, settings.autoLockMinutes, lastActiveTime]);
+  }, [isUnlocked, hasPassword, settings.autoLockMinutes, lastActiveTime]);
 
   // 验证第一步主密码 (PBKDF2-SHA256，支持旧版本透明升级与默认兜底)
   const verifyPassword = async (
@@ -132,23 +138,6 @@ export function usePrivacyLock(
     return true;
   };
 
-  // 一键重置为默认密码 123456 (应急解锁，不丢失任何记账数据)
-  const resetToDefaultPassword = async (): Promise<boolean> => {
-    const { hash, salt } = await hashPassword('123456');
-    onUpdateSettings({
-      isPinLockEnabled: true,
-      pinHash: hash,
-      passwordSalt: salt,
-      isTwoFactorEnabled: false,
-      twoFactorSecret: undefined,
-      twoFactorBackupCodes: [],
-    });
-    setIsUnlocked(true);
-    sessionStorage.setItem('qiyue_session_unlocked', 'true');
-    setLastActiveTime(Date.now());
-    return true;
-  };
-
   // 开启双重验证
   const enable2FA = (secret: string, backupCodes: string[]) => {
     onUpdateSettings({
@@ -175,12 +164,11 @@ export function usePrivacyLock(
 
   return {
     isUnlocked,
-    hasPassword: isLockEnabled,
+    hasPassword,
     is2FAEnabled,
     verifyPassword,
     verify2FACode,
     setMasterPassword,
-    resetToDefaultPassword,
     enable2FA,
     disable2FA,
     lockNow,
