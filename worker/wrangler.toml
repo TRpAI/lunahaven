@@ -13,4 +13,4 @@ database_id = "3652e1ff-356f-451e-b47b-ab4bdca3dad5"
 # wrangler secret put API_TOKEN
 [vars]
 # 允许跨域的前端来源，例如: https://ledger.yourdomain.com
-ALLOWED_ORIGIN = "*"
+ALLOWED_ORIGIN = "https://qiyuezb.pages.dev"
