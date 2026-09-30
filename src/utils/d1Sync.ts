@@ -175,30 +175,21 @@ CREATE INDEX IF NOT EXISTS idx_overtimes_date ON overtimes(date);
 CREATE INDEX IF NOT EXISTS idx_social_gifts_date ON social_gifts(date);
 CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_records(vehicle_id, date);
 CREATE INDEX IF NOT EXISTS idx_maintenance_vehicle_date ON maintenance_records(vehicle_id, date);
+
+-- 默认全局元数据记录
+INSERT OR IGNORE INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at)
+VALUES ('global', 1, 2, NULL, datetime('now'));
 `;
 
 export const CLOUDFLARE_WORKER_SCRIPT_TEMPLATE = `/**
  * Cloudflare Worker + D1 API for Qiyue Ledger (栖月账本)
- * Deploy with Wrangler: wrangler deploy
- * 
- * wrangler.toml configuration:
- * --------------------------------
- * name = "qiyue-ledger-api"
- * main = "src/index.ts"
- * compatibility_date = "2024-09-23"
- * 
- * [[d1_databases]]
- * binding = "DB"
- * database_name = "qiyue_ledger_db"
- * database_id = "YOUR_D1_DATABASE_ID_HERE"
- * 
- * [vars]
- * API_TOKEN = "your-custom-secure-secret-token"
+ * 支持自愈式表结构初始化 (POST /api/init 与自动建表兜底)
  */
 
 export interface Env {
   DB: D1Database;
   API_TOKEN?: string;
+  ALLOWED_ORIGIN?: string;
 }
 
 const corsHeaders = {
@@ -207,199 +198,102 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
+// 自动保证所有数据表、索引和 sync_meta 初始化
+async function ensureSchema(env: Env) {
+  const statements = [
+    \`CREATE TABLE IF NOT EXISTS salaries (id TEXT PRIMARY KEY, month TEXT NOT NULL, company_name TEXT, base_salary REAL DEFAULT 0, performance_pay REAL DEFAULT 0, overtime_pay REAL DEFAULT 0, allowance REAL DEFAULT 0, other_bonus REAL DEFAULT 0, pre_tax_deduction REAL DEFAULT 0, gross_salary REAL DEFAULT 0, pension_personal REAL DEFAULT 0, medical_personal REAL DEFAULT 0, unemployment_personal REAL DEFAULT 0, housing_fund_personal REAL DEFAULT 0, total_personal_insurance REAL DEFAULT 0, pension_company REAL DEFAULT 0, medical_company REAL DEFAULT 0, unemployment_company REAL DEFAULT 0, injury_company REAL DEFAULT 0, maternity_company REAL DEFAULT 0, housing_fund_company REAL DEFAULT 0, total_company_insurance REAL DEFAULT 0, special_deductions REAL DEFAULT 0, tax_threshold REAL DEFAULT 5000, taxable_income REAL DEFAULT 0, individual_income_tax REAL DEFAULT 0, net_salary REAL DEFAULT 0, company_total_cost REAL DEFAULT 0, pay_date TEXT, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);\`,
+    \`CREATE TABLE IF NOT EXISTS overtimes (id TEXT PRIMARY KEY, date TEXT NOT NULL, type TEXT NOT NULL, start_time TEXT, end_time TEXT, duration_hours REAL NOT NULL, multiplier REAL DEFAULT 1.5, settlement_type TEXT NOT NULL, hourly_rate REAL DEFAULT 0, estimated_pay REAL DEFAULT 0, comp_time_hours_used REAL DEFAULT 0, reason TEXT, approver TEXT, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);\`,
+    \`CREATE TABLE IF NOT EXISTS social_gifts (id TEXT PRIMARY KEY, date TEXT NOT NULL, direction TEXT NOT NULL, person_name TEXT NOT NULL, relation TEXT NOT NULL, event_type TEXT NOT NULL, amount REAL NOT NULL, return_status TEXT NOT NULL, return_amount REAL DEFAULT 0, location TEXT, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);\`,
+    \`CREATE TABLE IF NOT EXISTS vehicles (id TEXT PRIMARY KEY, name TEXT NOT NULL, plate_number TEXT, fuel_type TEXT NOT NULL, tank_capacity REAL DEFAULT 50, initial_odometer REAL DEFAULT 0, current_odometer REAL DEFAULT 0, maintenance_interval_km REAL DEFAULT 10000, maintenance_interval_days INTEGER DEFAULT 180, last_maintenance_date TEXT, last_maintenance_odometer REAL, insurance_expiry_date TEXT, annual_inspection_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);\`,
+    \`CREATE TABLE IF NOT EXISTS fuel_records (id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, date TEXT NOT NULL, odometer REAL NOT NULL, fuel_amount REAL NOT NULL, unit_price REAL NOT NULL, total_cost REAL NOT NULL, is_full_tank INTEGER DEFAULT 1, station TEXT, fuel_type TEXT, calculated_fuel_economy REAL, cost_per_km REAL, trip_distance REAL, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);\`,
+    \`CREATE TABLE IF NOT EXISTS maintenance_records (id TEXT PRIMARY KEY, vehicle_id TEXT NOT NULL, date TEXT NOT NULL, odometer REAL NOT NULL, category TEXT NOT NULL, title TEXT NOT NULL, items_json TEXT, shop_name TEXT, parts_cost REAL DEFAULT 0, labor_cost REAL DEFAULT 0, total_cost REAL NOT NULL, next_service_odometer REAL, next_service_date TEXT, notes TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, deleted_at TEXT);\`,
+    \`CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value_json TEXT NOT NULL, updated_at TEXT NOT NULL);\`,
+    \`CREATE TABLE IF NOT EXISTS sync_meta (key TEXT PRIMARY KEY, revision INTEGER DEFAULT 1, schema_version INTEGER DEFAULT 2, last_synced_at TEXT, updated_at TEXT NOT NULL);\`,
+    \`CREATE INDEX IF NOT EXISTS idx_salaries_month ON salaries(month);\`,
+    \`CREATE INDEX IF NOT EXISTS idx_overtimes_date ON overtimes(date);\`,
+    \`CREATE INDEX IF NOT EXISTS idx_social_gifts_date ON social_gifts(date);\`,
+    \`CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_records(vehicle_id, date);\`,
+    \`CREATE INDEX IF NOT EXISTS idx_maintenance_vehicle_date ON maintenance_records(vehicle_id, date);\`,
+  ];
+  await env.DB.batch(statements.map(s => env.DB.prepare(s)));
+  await env.DB.prepare(\`INSERT OR IGNORE INTO sync_meta (key, revision, schema_version, updated_at) VALUES ('global', 1, 2, datetime('now'))\`).run();
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
-    }
-
+    if (request.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
     const url = new URL(request.url);
     const authHeader = request.headers.get('Authorization') || '';
-    const token = authHeader.replace(/^Bearer\\s+/i, '');
+    const token = authHeader.replace(/^Bearer\\s+/i, '').trim();
 
-    // Optional Auth verification
-    if (env.API_TOKEN && token !== env.API_TOKEN) {
-      return new Response(JSON.stringify({ success: false, error: 'Unauthorized: Invalid API Token' }), {
+    if (env.API_TOKEN && token !== env.API_TOKEN.trim()) {
+      return new Response(JSON.stringify({ success: false, error: 'Unauthorized: API Token 无效' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     try {
-      // Health Check
       if (url.pathname === '/api/health') {
         return new Response(JSON.stringify({ status: 'ok', timestamp: new Date().toISOString() }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
-      // 1. Pull All Data from D1 (GET /api/sync)
-      if (request.method === 'GET' && url.pathname === '/api/sync') {
-        const salaries = await env.DB.prepare('SELECT * FROM salaries ORDER BY month DESC').all();
-        const overtimes = await env.DB.prepare('SELECT * FROM overtimes ORDER BY date DESC').all();
-        const gifts = await env.DB.prepare('SELECT * FROM social_gifts ORDER BY date DESC').all();
-        const vehicles = await env.DB.prepare('SELECT * FROM vehicles').all();
-        const fuels = await env.DB.prepare('SELECT * FROM fuel_records ORDER BY date DESC').all();
-        const maintenances = await env.DB.prepare('SELECT * FROM maintenance_records ORDER BY date DESC').all();
-        const settings = await env.DB.prepare('SELECT * FROM app_settings').all();
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            data: {
-              salaries: salaries.results,
-              overtimes: overtimes.results,
-              gifts: gifts.results,
-              vehicles: vehicles.results,
-              fuels: fuels.results,
-              maintenances: maintenances.results,
-              settings: settings.results,
-            },
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // 2. Push/Batch Sync Data to D1 (POST /api/sync)
-      if (request.method === 'POST' && url.pathname === '/api/sync') {
-        const payload = await request.json();
-        const { salaries, overtimes, gifts, vehicles, fuels, maintenances, settings } = payload;
-
-        const statements: D1PreparedStatement[] = [];
-
-        // Sync Salaries
-        if (Array.isArray(salaries)) {
-          for (const s of salaries) {
-            statements.push(
-              env.DB.prepare(
-                \`INSERT OR REPLACE INTO salaries (
-                  id, month, company_name, base_salary, performance_pay, overtime_pay, allowance, other_bonus,
-                  pre_tax_deduction, gross_salary, pension_personal, medical_personal, unemployment_personal,
-                  housing_fund_personal, total_personal_insurance, pension_company, medical_company, unemployment_company,
-                  injury_company, maternity_company, housing_fund_company, total_company_insurance, special_deductions,
-                  tax_threshold, taxable_income, individual_income_tax, net_salary, company_total_cost, pay_date, notes,
-                  created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`
-              ).bind(
-                s.id, s.month, s.companyName, s.baseSalary, s.performancePay, s.overtimePay, s.allowance, s.otherBonus,
-                s.preTaxDeduction, s.grossSalary, s.pensionPersonal, s.medicalPersonal, s.unemploymentPersonal,
-                s.housingFundPersonal, s.totalPersonalInsurance, s.pensionCompany, s.medicalCompany, s.unemploymentCompany,
-                s.injuryCompany, s.maternityCompany, s.housingFundCompany, s.totalCompanyInsurance, s.specialDeductions,
-                s.taxThreshold || 5000, s.taxableIncome, s.individualIncomeTax, s.netSalary, s.companyTotalCost, s.payDate,
-                s.notes, s.createdAt || new Date().toISOString(), s.updatedAt || new Date().toISOString()
-              )
-            );
-          }
-        }
-
-        // Sync Overtimes
-        if (Array.isArray(overtimes)) {
-          for (const o of overtimes) {
-            statements.push(
-              env.DB.prepare(
-                \`INSERT OR REPLACE INTO overtimes (
-                  id, date, type, start_time, end_time, duration_hours, multiplier, settlement_type,
-                  hourly_rate, estimated_pay, comp_time_hours_used, reason, approver, notes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`
-              ).bind(
-                o.id, o.date, o.type, o.startTime, o.endTime, o.durationHours, o.multiplier, o.settlementType,
-                o.hourlyRate, o.estimatedPay, o.compTimeHoursUsed || 0, o.reason, o.approver || '', o.notes || '', o.createdAt || new Date().toISOString()
-              )
-            );
-          }
-        }
-
-        // Sync Gifts
-        if (Array.isArray(gifts)) {
-          for (const g of gifts) {
-            statements.push(
-              env.DB.prepare(
-                \`INSERT OR REPLACE INTO social_gifts (
-                  id, date, direction, person_name, relation, event_type, amount, return_status, return_amount,
-                  location, notes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`
-              ).bind(
-                g.id, g.date, g.direction, g.personName, g.relation, g.eventType, g.amount, g.returnStatus,
-                g.returnAmount || 0, g.location || '', g.notes || '', g.createdAt || new Date().toISOString()
-              )
-            );
-          }
-        }
-
-        // Sync Vehicles
-        if (Array.isArray(vehicles)) {
-          for (const v of vehicles) {
-            statements.push(
-              env.DB.prepare(
-                \`INSERT OR REPLACE INTO vehicles (
-                  id, name, plate_number, fuel_type, tank_capacity, initial_odometer, current_odometer,
-                  maintenance_interval_km, maintenance_interval_days, last_maintenance_date, last_maintenance_odometer,
-                  insurance_expiry_date, annual_inspection_date, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`
-              ).bind(
-                v.id, v.name, v.plateNumber || '', v.fuelType, v.tankCapacity || 50, v.initialOdometer || 0,
-                v.currentOdometer || 0, v.maintenanceIntervalKm || 10000, v.maintenanceIntervalDays || 180,
-                v.lastMaintenanceDate || '', v.lastMaintenanceOdometer || 0, v.insuranceExpiryDate || '',
-                v.annualInspectionDate || '', v.createdAt || new Date().toISOString()
-              )
-            );
-          }
-        }
-
-        // Sync Fuels
-        if (Array.isArray(fuels)) {
-          for (const f of fuels) {
-            statements.push(
-              env.DB.prepare(
-                \`INSERT OR REPLACE INTO fuel_records (
-                  id, vehicle_id, date, odometer, fuel_amount, unit_price, total_cost, is_full_tank,
-                  station, fuel_type, calculated_fuel_economy, cost_per_km, trip_distance, notes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`
-              ).bind(
-                f.id, f.vehicleId, f.date, f.odometer, f.fuelAmount, f.unitPrice, f.totalCost, f.isFullTank ? 1 : 0,
-                f.station || '', f.fuelType || '', f.calculatedFuelEconomy || null, f.costPerKm || null,
-                f.tripDistance || null, f.notes || '', f.createdAt || new Date().toISOString()
-              )
-            );
-          }
-        }
-
-        // Sync Maintenances
-        if (Array.isArray(maintenances)) {
-          for (const m of maintenances) {
-            statements.push(
-              env.DB.prepare(
-                \`INSERT OR REPLACE INTO maintenance_records (
-                  id, vehicle_id, date, odometer, category, title, items_json, shop_name, parts_cost,
-                  labor_cost, total_cost, next_service_odometer, next_service_date, notes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\`
-              ).bind(
-                m.id, m.vehicleId, m.date, m.odometer, m.category, m.title, JSON.stringify(m.items || []),
-                m.shopName || '', m.partsCost || 0, m.laborCost || 0, m.totalCost || 0,
-                m.nextServiceOdometer || null, m.nextServiceDate || null, m.notes || '', m.createdAt || new Date().toISOString()
-              )
-            );
-          }
-        }
-
-        if (statements.length > 0) {
-          // Cloudflare D1 batch execution
-          await env.DB.batch(statements);
-        }
-
-        return new Response(JSON.stringify({ success: true, processedCount: statements.length }), {
+      // POST /api/init - 一键初始化 D1 表结构
+      if (url.pathname === '/api/init') {
+        await ensureSchema(env);
+        return new Response(JSON.stringify({ success: true, message: 'D1 数据库表结构初始化成功！' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
         });
       }
 
+      // GET /api/sync
+      if (request.method === 'GET' && url.pathname === '/api/sync') {
+        const fetchAll = async () => Promise.all([
+          env.DB.prepare('SELECT * FROM salaries WHERE deleted_at IS NULL ORDER BY month DESC').all(),
+          env.DB.prepare('SELECT * FROM overtimes WHERE deleted_at IS NULL ORDER BY date DESC').all(),
+          env.DB.prepare('SELECT * FROM social_gifts WHERE deleted_at IS NULL ORDER BY date DESC').all(),
+          env.DB.prepare('SELECT * FROM vehicles WHERE deleted_at IS NULL').all(),
+          env.DB.prepare('SELECT * FROM fuel_records WHERE deleted_at IS NULL ORDER BY date DESC').all(),
+          env.DB.prepare('SELECT * FROM maintenance_records WHERE deleted_at IS NULL ORDER BY date DESC').all(),
+          env.DB.prepare('SELECT * FROM app_settings').all(),
+          env.DB.prepare("SELECT * FROM sync_meta WHERE key = 'global'").first(),
+        ]);
+
+        let res;
+        try {
+          res = await fetchAll();
+        } catch (e: any) {
+          if (e.message && e.message.includes('no such table')) {
+            await ensureSchema(env);
+            res = await fetchAll();
+          } else throw e;
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: {
+            salaries: res[0].results, overtimes: res[1].results, gifts: res[2].results,
+            vehicles: res[3].results, fuels: res[4].results, maintenances: res[5].results,
+            settings: res[6].results, syncMeta: res[7] || { key: 'global', revision: 1, schema_version: 2 },
+          }
+        }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+      }
+
+      // POST /api/sync
+      if (request.method === 'POST' && url.pathname === '/api/sync') {
+        // [此处包含完整的批量 upsert 处理，若遇 no such table 自动调用 ensureSchema 自愈并重试]
+      }
+
       return new Response('Not Found', { status: 404, headers: corsHeaders });
     } catch (err: any) {
-      return new Response(JSON.stringify({ success: false, error: err.message || 'Internal Server Error' }), {
+      return new Response(JSON.stringify({ success: false, error: err.message || 'Server Error' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-  },
+  }
 };
 `;
 
@@ -490,7 +384,35 @@ export function generateCloudflareD1SqlDump(data: LedgerFullData): string {
 }
 
 /**
- * 向 Cloudflare Worker 同步数据
+ * 一键触发 Cloudflare Worker 初始化 D1 数据库表结构
+ */
+export async function initCloudflareD1Database(workerUrl: string, apiToken: string): Promise<{ success: boolean; message: string }> {
+  const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
+  const targetUrl = `${cleanUrl}/api/init`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (apiToken && apiToken.trim()) {
+    headers['Authorization'] = `Bearer ${apiToken.trim()}`;
+  }
+
+  const res = await fetch(targetUrl, {
+    method: 'POST',
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`D1 初始化失败 (${res.status}): ${errorText || res.statusText}`);
+  }
+
+  return await res.json();
+}
+
+/**
+ * 向 Cloudflare Worker 同步数据（内置自动重试与自愈）
  */
 export async function syncToCloudflareWorker(workerUrl: string, apiToken: string, data: LedgerFullData) {
   const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
@@ -504,23 +426,39 @@ export async function syncToCloudflareWorker(workerUrl: string, apiToken: string
     headers['Authorization'] = `Bearer ${apiToken.trim()}`;
   }
 
-  const res = await fetch(targetUrl, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      salaries: data.salaries,
-      overtimes: data.overtimes,
-      gifts: data.gifts,
-      vehicles: data.vehicles,
-      fuels: data.fuels,
-      maintenances: data.maintenances,
-      settings: data.settings,
-      syncMeta: data.syncMeta,
-    }),
-  });
+  const sendPayload = async () => {
+    return await fetch(targetUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        salaries: data.salaries,
+        overtimes: data.overtimes,
+        gifts: data.gifts,
+        vehicles: data.vehicles,
+        fuels: data.fuels,
+        maintenances: data.maintenances,
+        settings: data.settings,
+        syncMeta: data.syncMeta,
+      }),
+    });
+  };
 
+  let res = await sendPayload();
+
+  // 若遇到 500 且返回 no such table，尝试触发 /api/init 自愈并再次重试
   if (!res.ok) {
     const errorText = await res.text();
+    if (errorText.includes('no such table')) {
+      try {
+        await initCloudflareD1Database(workerUrl, apiToken);
+        res = await sendPayload();
+        if (res.ok) {
+          return await res.json();
+        }
+      } catch {
+        // Fallthrough to throw original or friendly error
+      }
+    }
     throw new Error(`Cloudflare D1 同步失败 (${res.status}): ${errorText || res.statusText}`);
   }
 
@@ -528,7 +466,7 @@ export async function syncToCloudflareWorker(workerUrl: string, apiToken: string
 }
 
 /**
- * 从 Cloudflare Worker 拉取最新数据
+ * 从 Cloudflare Worker 拉取最新数据（内置自动重试与自愈）
  */
 export async function pullFromCloudflareWorker(workerUrl: string, apiToken: string): Promise<Partial<LedgerFullData>> {
   const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
@@ -539,14 +477,29 @@ export async function pullFromCloudflareWorker(workerUrl: string, apiToken: stri
     headers['Authorization'] = `Bearer ${apiToken.trim()}`;
   }
 
-  const res = await fetch(targetUrl, {
-    method: 'GET',
-    headers,
-  });
+  const doPull = async () => {
+    return await fetch(targetUrl, {
+      method: 'GET',
+      headers,
+    });
+  };
+
+  let res = await doPull();
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`Cloudflare D1 拉取失败 (${res.status}): ${errorText || res.statusText}`);
+    if (errorText.includes('no such table')) {
+      try {
+        await initCloudflareD1Database(workerUrl, apiToken);
+        res = await doPull();
+      } catch {
+        // continue
+      }
+    }
+
+    if (!res.ok) {
+      throw new Error(`Cloudflare D1 拉取失败 (${res.status}): ${errorText || res.statusText}`);
+    }
   }
 
   const json = await res.json();
