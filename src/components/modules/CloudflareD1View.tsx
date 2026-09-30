@@ -1,19 +1,15 @@
 import React, { useState } from 'react';
 import {
   Activity,
-  Check,
   CheckCircle2,
   Cloud,
   CloudCog,
-  Copy,
   Download,
   HelpCircle,
   RefreshCw,
-  Terminal,
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import {
-  CLOUDFLARE_D1_SCHEMA_SQL,
   checkCloudflareHealth,
   generateCloudflareD1SqlDump,
   pullFromCloudflareWorker,
@@ -43,8 +39,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
 
   const [workerUrlInput, setWorkerUrlInput] = useState(d1Config.workerUrl || '');
   const [apiTokenInput, setApiTokenInput] = useState(d1Config.apiToken || '');
-  const [copiedSection, setCopiedSection] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'config' | 'schema' | 'tutorial'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'tutorial'>('config');
 
   const [pullLoading, setPullLoading] = useState(false);
   const [pullMsg, setPullMsg] = useState<string | null>(null);
@@ -65,12 +60,6 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
       },
     });
     alert('Cloudflare D1 生产同步配置已保存！');
-  };
-
-  const handleCopy = (text: string, sectionKey: string) => {
-    navigator.clipboard.writeText(text);
-    setCopiedSection(sectionKey);
-    setTimeout(() => setCopiedSection(null), 2000);
   };
 
   const handleExportSqlFile = () => {
@@ -281,18 +270,6 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('schema')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'schema'
-              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold'
-              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-          }`}
-        >
-          <Terminal className="w-3.5 h-3.5" />
-          <span>D1 生产 Schema</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab('tutorial')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
             activeTab === 'tutorial'
@@ -356,32 +333,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </div>
       )}
 
-      {/* 2. D1 SQL Schema 结构面板 */}
-      {activeTab === 'schema' && (
-        <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Cloudflare D1 生产 Schema DDL</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                包含薪资、工时、人情、车辆、加油、维保、复合索引及 audit_logs 审计表
-              </p>
-            </div>
-            <button
-              onClick={() => handleCopy(CLOUDFLARE_D1_SCHEMA_SQL, 'schema')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium cursor-pointer"
-            >
-              {copiedSection === 'schema' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedSection === 'schema' ? '已复制' : '复制代码'}</span>
-            </button>
-          </div>
-
-          <pre className="p-4 rounded-xl bg-zinc-950 text-zinc-300 text-xs font-mono overflow-x-auto max-h-96 border border-zinc-800 leading-relaxed">
-            {CLOUDFLARE_D1_SCHEMA_SQL}
-          </pre>
-        </div>
-      )}
-
-      {/* 3. 3分钟生产部署教程指南 */}
+      {/* 2. 3分钟生产部署教程指南 */}
       {activeTab === 'tutorial' && (
         <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
