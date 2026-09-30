@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   Cloud,
   CloudCog,
-  Code2,
   Copy,
   Download,
   HelpCircle,
@@ -16,7 +15,6 @@ import {
 import { AppSettings, LedgerFullData } from '../../types';
 import {
   CLOUDFLARE_D1_SCHEMA_SQL,
-  CLOUDFLARE_WORKER_SCRIPT_TEMPLATE,
   generateCloudflareD1SqlDump,
   initCloudflareD1Database,
   pullFromCloudflareWorker,
@@ -47,7 +45,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   const [workerUrlInput, setWorkerUrlInput] = useState(d1Config.workerUrl || '');
   const [apiTokenInput, setApiTokenInput] = useState(d1Config.apiToken || '');
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'config' | 'schema' | 'worker_code' | 'tutorial'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'schema' | 'tutorial'>('config');
 
   const [pullLoading, setPullLoading] = useState(false);
   const [pullMsg, setPullMsg] = useState<string | null>(null);
@@ -301,18 +299,6 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </button>
 
         <button
-          onClick={() => setActiveTab('worker_code')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'worker_code'
-              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold'
-              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-          }`}
-        >
-          <Code2 className="w-3.5 h-3.5" />
-          <span>Worker 后端源码</span>
-        </button>
-
-        <button
           onClick={() => setActiveTab('tutorial')}
           className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
             activeTab === 'tutorial'
@@ -413,32 +399,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </div>
       )}
 
-      {/* 3. Worker 后端源码面板 */}
-      {activeTab === 'worker_code' && (
-        <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Cloudflare Worker API 脚本代码 (index.ts)</h3>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                支持 `POST /api/init` 一键建表、`POST /api/sync` 批量同步与 `GET /api/sync` 拉取
-              </p>
-            </div>
-            <button
-              onClick={() => handleCopy(CLOUDFLARE_WORKER_SCRIPT_TEMPLATE, 'worker')}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium cursor-pointer"
-            >
-              {copiedSection === 'worker' ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedSection === 'worker' ? '已复制' : '复制代码'}</span>
-            </button>
-          </div>
-
-          <pre className="p-4 rounded-xl bg-zinc-950 text-zinc-300 text-xs font-mono overflow-x-auto max-h-96 border border-zinc-800 leading-relaxed">
-            {CLOUDFLARE_WORKER_SCRIPT_TEMPLATE}
-          </pre>
-        </div>
-      )}
-
-      {/* 4. 3分钟部署教程指南 */}
+      {/* 3. 3分钟部署教程指南 */}
       {activeTab === 'tutorial' && (
         <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">

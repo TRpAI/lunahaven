@@ -144,6 +144,10 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
   };
 
   const handleOpenAddFuel = () => {
+    if (!currentVehicle) {
+      setIsVehicleModalOpen(true);
+      return;
+    }
     setEditingFuelId(null);
     setFuelForm({
       date: new Date().toISOString().slice(0, 10),
@@ -177,6 +181,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
   const handleFuelSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentVehicle) return;
     const newRecord: FuelRecord = {
       id: editingFuelId || `fuel-${Date.now()}`,
       vehicleId: currentVehicle.id,
@@ -197,6 +202,10 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
   };
 
   const handleOpenAddMaint = () => {
+    if (!currentVehicle) {
+      setIsVehicleModalOpen(true);
+      return;
+    }
     setEditingMaintId(null);
     setMaintForm({
       date: new Date().toISOString().slice(0, 10),
@@ -236,6 +245,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
   const handleMaintSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!currentVehicle) return;
     const items = maintForm.itemsStr
       ? maintForm.itemsStr.split(/[,，\n]/).map((i) => i.trim()).filter(Boolean)
       : [];
@@ -280,6 +290,130 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     onChangeActiveVehicle(newV.id);
     setIsVehicleModalOpen(false);
   };
+
+  if (!currentVehicle || !healthStatus) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-200">
+        <div className="p-8 sm:p-12 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 flex items-center justify-center mx-auto">
+            <Car className="w-8 h-8" />
+          </div>
+          <div className="space-y-1 max-w-sm mx-auto">
+            <h2 className="text-base font-bold text-zinc-900 dark:text-zinc-100">暂无车辆档案</h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              添加您的第一辆爱车（燃油车 / 纯电动 / 混动），开始记录加油充电、能耗分析与维保预警
+            </p>
+          </div>
+          <button
+            onClick={() => setIsVehicleModalOpen(true)}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+          >
+            <Plus className="w-4 h-4" />
+            <span>添加爱车</span>
+          </button>
+        </div>
+
+        {/* 渲染添加车辆 Modal */}
+        {isVehicleModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+            <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                  <Car className="w-5 h-5 text-zinc-500" />
+                  <span>添加爱车档案</span>
+                </h3>
+                <button
+                  onClick={() => setIsVehicleModalOpen(false)}
+                  className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateVehicle} className="space-y-3.5">
+                <div>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">车辆名称/型号</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="如: 极氪 001 / 特斯拉 Model Y"
+                    value={vehicleForm.name}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, name: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">车牌号码</label>
+                    <input
+                      type="text"
+                      placeholder="如: 京A·8899D"
+                      value={vehicleForm.plateNumber}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, plateNumber: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">能源类型</label>
+                    <select
+                      value={vehicleForm.fuelType}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, fuelType: e.target.value as VehicleFuelType })}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    >
+                      <option value="electric">纯电动 (kWh)</option>
+                      <option value="gasoline_92">92# 汽油</option>
+                      <option value="gasoline_95">95# 汽油</option>
+                      <option value="gasoline_98">98# 汽油</option>
+                      <option value="hybrid">插电混动 / 增程</option>
+                      <option value="diesel">柴油</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">初始里程 (km)</label>
+                    <input
+                      type="number"
+                      value={vehicleForm.initialOdometer}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, initialOdometer: parseFloat(e.target.value) || 0 })}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">保养周期里程 (km)</label>
+                    <input
+                      type="number"
+                      value={vehicleForm.maintenanceIntervalKm}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, maintenanceIntervalKm: parseFloat(e.target.value) || 10000 })}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsVehicleModalOpen(false)}
+                    className="px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold shadow-xs cursor-pointer"
+                  >
+                    创建车辆
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   // 统计指标
   const totalFuelCost = vehicleFuels.reduce((acc, f) => acc + f.totalCost, 0);

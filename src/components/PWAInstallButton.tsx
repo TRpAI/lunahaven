@@ -16,12 +16,11 @@ export const PWAInstallButton: React.FC = () => {
     return (
       <button
         onClick={install}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-medium shadow-xs transition-colors cursor-pointer"
+        className="flex items-center justify-center gap-1.5 p-2 sm:px-3 sm:py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-medium shadow-xs transition-colors cursor-pointer shrink-0"
         title="安装应用到主屏幕"
       >
-        <Download className="w-3.5 h-3.5" />
+        <Download className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
         <span className="hidden sm:inline">安装应用</span>
-        <span className="sm:hidden">安装</span>
       </button>
     );
   }
@@ -32,12 +31,11 @@ export const PWAInstallButton: React.FC = () => {
       <>
         <button
           onClick={() => setShowIOSGuide(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
+          className="flex items-center justify-center gap-1.5 p-2 sm:px-2.5 sm:py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer shrink-0"
           title="在 iPhone / iPad 上安装"
         >
-          <Smartphone className="w-3.5 h-3.5 text-zinc-500" />
+          <Smartphone className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-zinc-500" />
           <span className="hidden sm:inline">添加到主屏幕</span>
-          <span className="sm:hidden">安装</span>
         </button>
 
         {showIOSGuide && (
