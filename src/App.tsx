@@ -14,6 +14,7 @@ import { PrivacyLockModal } from './components/PrivacyLockModal';
 import { QuickAddModal } from './components/QuickAddModal';
 import { Sidebar } from './components/Sidebar';
 import { useLedgerData } from './hooks/useLedgerData';
+import { useOneDriveAutoBackup } from './hooks/useOneDriveAutoBackup';
 import { usePrivacyLock } from './hooks/usePrivacyLock';
 import { useTheme } from './hooks/useTheme';
 
@@ -58,6 +59,9 @@ export default function App() {
     lockNow,
     recordActivity,
   } = usePrivacyLock(data.settings, updateSettings);
+
+  // 全局定时增量自动备份至 OneDrive
+  useOneDriveAutoBackup(data.settings, data, updateSettings);
 
   const handleToggleTheme = () => {
     if (theme === 'dark') {

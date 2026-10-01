@@ -103,7 +103,8 @@ export async function uploadBackupToOneDrive(
     2
   );
 
-  const targetPath = encodeURIComponent(`${cleanFolder}/${fileName}`);
+  // 按照 Microsoft Graph 标准路径规则：目录与文件名分别编码，中间用标准 '/' 分隔
+  const targetPath = `${encodeURIComponent(cleanFolder)}/${encodeURIComponent(fileName)}`;
   const uploadUrl = `${GRAPH_BASE_URL}/me/drive/root:/${targetPath}:/content`;
 
   // 1. 上传时间戳快照文件
@@ -123,7 +124,7 @@ export async function uploadBackupToOneDrive(
 
   // 2. 同时更新 latest_backup.json 便于快速恢复最新状态
   try {
-    const latestPath = encodeURIComponent(`${cleanFolder}/latest_backup.json`);
+    const latestPath = `${encodeURIComponent(cleanFolder)}/latest_backup.json`;
     await fetch(`${GRAPH_BASE_URL}/me/drive/root:/${latestPath}:/content`, {
       method: 'PUT',
       headers: {
