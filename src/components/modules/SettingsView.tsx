@@ -34,6 +34,7 @@ import {
   triggerFileDownload,
 } from '../../utils/exportImport';
 import { TwoFactorSetupModal } from '../TwoFactorSetupModal';
+import { OneDriveBackupCard } from '../OneDriveBackupCard';
 
 interface SettingsViewProps {
   settings: AppSettings;
@@ -512,7 +513,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         </div>
       </div>
 
-      {/* 5. 危险区：数据重置 */}
+      {/* 5. 定时增量备份到 OneDrive */}
+      <OneDriveBackupCard
+        settings={settings}
+        onUpdateSettings={onUpdateSettings}
+        fullData={fullData}
+        onImportFullData={onImportFullData}
+      />
+
+      {/* 6. 危险区：数据重置 */}
       <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 text-xs">
         <div>
           <div className="font-semibold text-zinc-900 dark:text-zinc-100">数据管理</div>

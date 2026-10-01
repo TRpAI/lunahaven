@@ -25,6 +25,21 @@ export const DEFAULT_SETTINGS: AppSettings = {
     syncMode: 'local_only',
     autoSync: false,
   },
+  oneDriveConfig: {
+    clientId: '',
+    accessToken: '',
+    refreshToken: '',
+    tokenExpiresAt: 0,
+    userAccountEmail: '',
+    userName: '',
+    backupFolder: 'QiyueLedger',
+    autoBackup: false,
+    backupIntervalHours: 24,
+    lastBackupTime: null,
+    lastBackupRevision: 0,
+    backupStatus: 'idle',
+    maxRetentionCount: 20,
+  },
 };
 
 /**

@@ -199,6 +199,23 @@ export interface CloudflareD1Config {
   errorMessage?: string;
 }
 
+export interface OneDriveConfig {
+  clientId?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiresAt?: number;
+  userAccountEmail?: string;
+  userName?: string;
+  backupFolder: string; // 默认 'QiyueLedger'
+  autoBackup: boolean;
+  backupIntervalHours: number; // 6 | 12 | 24 | 168
+  lastBackupTime: string | null;
+  lastBackupRevision?: number;
+  backupStatus: 'idle' | 'backing_up' | 'success' | 'error';
+  errorMessage?: string;
+  maxRetentionCount: number; // 历史保留份数，默认 20
+}
+
 export interface SyncMeta {
   id: string; // 'global'
   revision: number;
@@ -221,6 +238,7 @@ export interface AppSettings {
   activeVehicleId: string;
   insuranceRates: FiveInsuranceRates;
   d1Config: CloudflareD1Config;
+  oneDriveConfig?: OneDriveConfig;
 }
 
 export interface LedgerFullData {
