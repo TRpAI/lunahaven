@@ -40,6 +40,7 @@ export default function App() {
     importFullData,
     resetDemo,
     clearAll,
+    refreshData,
     syncWithCloudflare,
     isSyncing,
     syncError,
@@ -108,6 +109,7 @@ export default function App() {
         onLockScreen={lockNow}
         onOpenQuickAdd={() => setIsQuickAddOpen(true)}
         onManualSync={syncWithCloudflare}
+        onRefreshData={refreshData}
         isSyncing={isSyncing}
         theme={theme}
         onToggleTheme={handleToggleTheme}

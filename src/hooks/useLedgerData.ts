@@ -320,7 +320,50 @@ export function useLedgerData() {
     setData(empty);
   }, [data.settings]);
 
-  // 10. Cloudflare D1 一键主动推送同步
+  // 10. 全局数据与缓存刷新（含本地 IndexedDB 重载与 Cloudflare D1 双向同步）
+  const refreshData = useCallback(async () => {
+    setIsSyncing(true);
+    setSyncError(null);
+    try {
+      // 1. 重新从 IndexedDB 异步读取最新底层数据
+      const idbData = await loadAllFromIndexedDB();
+      if (idbData) {
+        setData(idbData);
+      }
+
+      // 2. 若配置了 Cloudflare D1，则执行云端同步
+      if (idbData?.settings?.d1Config?.workerUrl) {
+        await syncToCloudflareWorker(
+          idbData.settings.d1Config.workerUrl,
+          idbData.settings.d1Config.apiToken,
+          idbData
+        );
+        const nowStr = new Date().toLocaleString('zh-CN');
+        const updatedSettings: AppSettings = {
+          ...idbData.settings,
+          d1Config: {
+            ...idbData.settings.d1Config,
+            lastSyncTime: nowStr,
+            syncStatus: 'success',
+            errorMessage: undefined,
+          },
+        };
+        setData((prev) => ({ ...prev, settings: updatedSettings }));
+        settingsRepository.saveSettings(updatedSettings).catch(console.error);
+        return { success: true, isCloud: true, time: nowStr };
+      }
+
+      return { success: true, isCloud: false, time: new Date().toLocaleTimeString('zh-CN') };
+    } catch (err: any) {
+      const errMsg = err.message || '刷新或同步失败';
+      setSyncError(errMsg);
+      return { success: false, error: errMsg };
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  // 11. Cloudflare D1 一键主动推送同步
   const syncWithCloudflare = useCallback(async () => {
     const { workerUrl, apiToken } = data.settings.d1Config;
     if (!workerUrl) {
@@ -375,6 +418,7 @@ export function useLedgerData() {
     importFullData,
     resetDemo,
     clearAll,
+    refreshData,
     syncWithCloudflare,
     isSyncing,
     syncError,
