@@ -92,6 +92,24 @@ export interface SocialGiftRecord {
   deletedAt?: string;
 }
 
+// 7. 日常生活开销、医疗健康、人情往来、教育专项与旅行支出
+export type ExpenseType = 'living' | 'medical' | 'gift' | 'education' | 'travel';
+
+export interface ExpenseRecord {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: ExpenseType; // living: 日常生活 | medical: 医疗健康 | gift: 人情往来 | education: 教育专项 | travel: 旅行度假
+  category: string; // 细分分类
+  amount: number; // 支出金额
+  payer?: string; // 支出人: 本人 / 配偶 / 家庭共同
+  paymentMethod?: string; // 微信支付 / 支付宝 / 银行卡 / 现金
+  beneficiary?: string; // 受益对象 / 患者姓名 / 关系人 / 旅行目的地 (如: 本人 / 父母 / 大宝 / 李雷 / 云南大理)
+  remarks: string; // 明细备注
+  createdAt: string;
+  updatedAt?: string;
+  deletedAt?: string;
+}
+
 export type VehicleFuelType = 'gasoline_92' | 'gasoline_95' | 'gasoline_98' | 'diesel' | 'electric' | 'hybrid';
 
 export interface VehicleProfile {
@@ -245,6 +263,7 @@ export interface AppSettings {
 export interface LedgerFullData {
   salaries: SalaryRecord[];
   overtimes: OvertimeRecord[];
+  expenses: ExpenseRecord[]; // 日常生活开销与教育支出
   gifts: SocialGiftRecord[];
   vehicles: VehicleProfile[];
   fuels: FuelRecord[];
@@ -263,6 +282,7 @@ export interface VersionedBackupData {
   data: {
     salaries: SalaryRecord[];
     overtimes: OvertimeRecord[];
+    expenses: ExpenseRecord[];
     gifts: SocialGiftRecord[];
     vehicles: VehicleProfile[];
     fuels: FuelRecord[];

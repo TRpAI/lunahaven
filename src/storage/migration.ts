@@ -2,6 +2,7 @@ import { LedgerFullData } from '../types';
 import { generateInitialSampleData } from '../utils/storage';
 import { dbBatchPut, dbClear, dbGetAll, STORES } from './db';
 import { fuelRepository } from './repositories/fuelRepository';
+import { expenseRepository } from './repositories/expenseRepository';
 import { giftRepository } from './repositories/giftRepository';
 import { maintenanceRepository } from './repositories/maintenanceRepository';
 import { overtimeRepository } from './repositories/overtimeRepository';
@@ -51,6 +52,7 @@ export async function migrateFromLocalStorageIfNeeded(): Promise<boolean> {
         // Save to IndexedDB
         if (parsed.salaries) await salaryRepository.batchSave(parsed.salaries);
         if (parsed.overtimes) await overtimeRepository.batchSave(parsed.overtimes);
+        if (parsed.expenses) await expenseRepository.batchSave(parsed.expenses);
         if (parsed.gifts) await giftRepository.batchSave(parsed.gifts);
         if (parsed.vehicles) await vehicleRepository.batchSave(parsed.vehicles);
         if (parsed.fuels) await fuelRepository.batchSave(parsed.fuels);
@@ -82,6 +84,7 @@ export async function loadAllFromIndexedDB(): Promise<LedgerFullData> {
   const [
     salaries,
     overtimes,
+    expenses,
     gifts,
     vehicles,
     fuels,
@@ -91,6 +94,7 @@ export async function loadAllFromIndexedDB(): Promise<LedgerFullData> {
   ] = await Promise.all([
     salaryRepository.getAll(),
     overtimeRepository.getAll(),
+    expenseRepository.getAll(),
     giftRepository.getAll(),
     vehicleRepository.getAll(),
     fuelRepository.getAll(),
@@ -102,6 +106,7 @@ export async function loadAllFromIndexedDB(): Promise<LedgerFullData> {
   return {
     salaries,
     overtimes,
+    expenses,
     gifts,
     vehicles,
     fuels,
@@ -120,6 +125,7 @@ export async function saveAllToIndexedDB(data: LedgerFullData): Promise<void> {
   await Promise.all([
     dbClear(STORES.SALARIES),
     dbClear(STORES.OVERTIMES),
+    dbClear(STORES.EXPENSES),
     dbClear(STORES.GIFTS),
     dbClear(STORES.VEHICLES),
     dbClear(STORES.FUELS),
@@ -129,6 +135,7 @@ export async function saveAllToIndexedDB(data: LedgerFullData): Promise<void> {
   await Promise.all([
     dbBatchPut(STORES.SALARIES, data.salaries || []),
     dbBatchPut(STORES.OVERTIMES, data.overtimes || []),
+    dbBatchPut(STORES.EXPENSES, data.expenses || []),
     dbBatchPut(STORES.GIFTS, data.gifts || []),
     dbBatchPut(STORES.VEHICLES, data.vehicles || []),
     dbBatchPut(STORES.FUELS, data.fuels || []),
@@ -150,6 +157,7 @@ export async function clearAllIndexedDB(): Promise<void> {
   await Promise.all([
     dbClear(STORES.SALARIES),
     dbClear(STORES.OVERTIMES),
+    dbClear(STORES.EXPENSES),
     dbClear(STORES.GIFTS),
     dbClear(STORES.VEHICLES),
     dbClear(STORES.FUELS),

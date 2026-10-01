@@ -3,12 +3,12 @@ import {
   Banknote,
   BarChart3,
   Car,
-  Clock,
   Cloud,
   Gift,
   LayoutDashboard,
   MoreHorizontal,
   Settings,
+  ShoppingBag,
   X,
 } from 'lucide-react';
 
@@ -22,8 +22,8 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onSelectTab }) 
 
   const mainTabs = [
     { id: 'dashboard', label: '汽车看板', icon: LayoutDashboard },
-    { id: 'salary', label: '工资五险', icon: Banknote },
-    { id: 'overtime', label: '加班工时', icon: Clock },
+    { id: 'salary', label: '薪资工时', icon: Banknote },
+    { id: 'expenses', label: '开销旅行', icon: ShoppingBag },
     { id: 'gift', label: '人情往来', icon: Gift },
     { id: 'vehicle', label: '汽车明细', icon: Car },
   ];

@@ -3,9 +3,9 @@ import { MobileNav } from './components/MobileNav';
 import { AnalyticsView } from './components/modules/AnalyticsView';
 import { CloudflareD1View } from './components/modules/CloudflareD1View';
 import { DashboardView } from './components/modules/DashboardView';
+import { ExpensesView } from './components/modules/ExpensesView';
 import { GiftsView } from './components/modules/GiftsView';
-import { OvertimeView } from './components/modules/OvertimeView';
-import { SalaryView } from './components/modules/SalaryView';
+import { SalaryOvertimeView } from './components/modules/SalaryOvertimeView';
 import { SettingsView } from './components/modules/SettingsView';
 import { VehicleView } from './components/modules/VehicleView';
 import { Navbar } from './components/Navbar';
@@ -31,6 +31,8 @@ export default function App() {
     deleteOvertime,
     saveGift,
     deleteGift,
+    saveExpense,
+    deleteExpense,
     saveVehicle,
     deleteVehicle,
     saveFuel,
@@ -74,9 +76,9 @@ export default function App() {
     }
   };
 
-  const handleQuickAction = (type: 'salary' | 'overtime' | 'gift' | 'fuel' | 'maintenance') => {
-    if (type === 'salary') setActiveTab('salary');
-    else if (type === 'overtime') setActiveTab('overtime');
+  const handleQuickAction = (type: 'salary' | 'overtime' | 'expense' | 'gift' | 'fuel' | 'maintenance') => {
+    if (type === 'salary' || type === 'overtime') setActiveTab('salary');
+    else if (type === 'expense') setActiveTab('expenses');
     else if (type === 'gift') setActiveTab('gift');
     else if (type === 'fuel' || type === 'maintenance') setActiveTab('vehicle');
   };
@@ -131,6 +133,7 @@ export default function App() {
           counts={{
             salaries: data.salaries.length,
             overtimes: data.overtimes.length,
+            expenses: (data.expenses || []).length,
             gifts: data.gifts.length,
             fuels: data.fuels.length,
           }}
@@ -148,23 +151,26 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'salary' && (
-            <SalaryView
+          {(activeTab === 'salary' || activeTab === 'overtime') && (
+            <SalaryOvertimeView
               salaries={data.salaries}
               onSaveSalary={saveSalary}
               onDeleteSalary={deleteSalary}
-              hidePrivacy={data.settings.privacyMaskNumbers}
-              defaultRates={data.settings.insuranceRates}
-            />
-          )}
-
-          {activeTab === 'overtime' && (
-            <OvertimeView
               overtimes={data.overtimes}
               onSaveOvertime={saveOvertime}
               onDeleteOvertime={deleteOvertime}
               hidePrivacy={data.settings.privacyMaskNumbers}
+              defaultRates={data.settings.insuranceRates}
               defaultBaseSalary={data.salaries.length > 0 ? data.salaries[0].baseSalary : 18000}
+            />
+          )}
+
+          {activeTab === 'expenses' && (
+            <ExpensesView
+              expenses={data.expenses || []}
+              onSaveExpense={saveExpense}
+              onDeleteExpense={deleteExpense}
+              hidePrivacy={data.settings.privacyMaskNumbers}
             />
           )}
 

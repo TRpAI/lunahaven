@@ -3,12 +3,13 @@ import {
   Banknote,
   BarChart3,
   Car,
-  Clock,
   Cloud,
   Gift,
   LayoutDashboard,
+  Receipt,
   Settings,
   Shield,
+  ShoppingBag,
 } from 'lucide-react';
 
 interface NavProps {
@@ -17,6 +18,7 @@ interface NavProps {
   counts: {
     salaries: number;
     overtimes: number;
+    expenses?: number;
     gifts: number;
     fuels: number;
   };
@@ -25,8 +27,8 @@ interface NavProps {
 export const Sidebar: React.FC<NavProps> = ({ activeTab, onSelectTab, counts }) => {
   const menuItems = [
     { id: 'dashboard', label: '汽车看板', icon: LayoutDashboard, badge: null },
-    { id: 'salary', label: '工资与五险一金', icon: Banknote, badge: counts.salaries },
-    { id: 'overtime', label: '加班工时与调休', icon: Clock, badge: counts.overtimes },
+    { id: 'salary', label: '薪资与加班工时', icon: Banknote, badge: (counts.salaries || 0) + (counts.overtimes || 0) },
+    { id: 'expenses', label: '日常、教育与旅行', icon: ShoppingBag, badge: counts.expenses || null },
     { id: 'gift', label: '人情往来礼金', icon: Gift, badge: counts.gifts },
     { id: 'vehicle', label: '汽车加油与维保', icon: Car, badge: counts.fuels },
     { id: 'analytics', label: '数据图表分析', icon: BarChart3, badge: null },

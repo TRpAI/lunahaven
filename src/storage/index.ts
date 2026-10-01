@@ -1,6 +1,7 @@
 export * from './db';
 export * from './migration';
 export * from './repositories/fuelRepository';
+export * from './repositories/expenseRepository';
 export * from './repositories/giftRepository';
 export * from './repositories/maintenanceRepository';
 export * from './repositories/overtimeRepository';

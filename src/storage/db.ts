@@ -4,11 +4,12 @@
  */
 
 export const DB_NAME = 'qiyue_ledger_db';
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 
 export const STORES = {
   SALARIES: 'salaries',
   OVERTIMES: 'overtimes',
+  EXPENSES: 'expenses', // 日常生活开销与教育支出
   GIFTS: 'gifts',
   VEHICLES: 'vehicles',
   FUELS: 'fuel_records',
@@ -59,7 +60,16 @@ export function openLedgerDB(): Promise<IDBDatabase> {
         store.createIndex('updatedAt', 'updatedAt', { unique: false });
       }
 
-      // 3. Social Gifts
+      // 3. Expenses (日常生活与教育支出)
+      if (!db.objectStoreNames.contains(STORES.EXPENSES)) {
+        const store = db.createObjectStore(STORES.EXPENSES, { keyPath: 'id' });
+        store.createIndex('date', 'date', { unique: false });
+        store.createIndex('type', 'type', { unique: false });
+        store.createIndex('category', 'category', { unique: false });
+        store.createIndex('updatedAt', 'updatedAt', { unique: false });
+      }
+
+      // 4. Social Gifts
       if (!db.objectStoreNames.contains(STORES.GIFTS)) {
         const store = db.createObjectStore(STORES.GIFTS, { keyPath: 'id' });
         store.createIndex('date', 'date', { unique: false });

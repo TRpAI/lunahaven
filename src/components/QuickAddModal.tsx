@@ -5,6 +5,7 @@ import {
   Fuel,
   Gift,
   Plus,
+  ShoppingBag,
   Wrench,
   X,
 } from 'lucide-react';
@@ -12,7 +13,7 @@ import {
 interface QuickAddModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectAction: (type: 'salary' | 'overtime' | 'gift' | 'fuel' | 'maintenance') => void;
+  onSelectAction: (type: 'salary' | 'overtime' | 'expense' | 'gift' | 'fuel' | 'maintenance') => void;
 }
 
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, onSelectAction }) => {
@@ -32,6 +33,13 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, o
       subtitle: '延时/周末/节假日、加班费与调休换算',
       icon: Clock,
       tag: '工时',
+    },
+    {
+      type: 'expense' as const,
+      title: '记录日常/医疗/人情/教育开销',
+      subtitle: '餐饮日用、门诊就医、随礼人情、培优旅游',
+      icon: ShoppingBag,
+      tag: '开销',
     },
     {
       type: 'gift' as const,

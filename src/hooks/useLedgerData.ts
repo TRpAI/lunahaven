@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppSettings,
+  ExpenseRecord,
   FuelRecord,
   LedgerFullData,
   MaintenanceRecord,
@@ -14,6 +15,7 @@ import { processFuelRecords } from '../utils/fuelCalculator';
 import { clearAllLedgerData, loadLedgerData, resetToSampleData, saveLedgerData } from '../utils/storage';
 import {
   clearAllIndexedDB,
+  expenseRepository,
   fuelRepository,
   giftRepository,
   loadAllFromIndexedDB,
@@ -257,6 +259,41 @@ export function useLedgerData() {
     scheduleAutoPushSync();
   }, [scheduleAutoPushSync]);
 
+  // 3.5 日常生活开销与教育支出 CRUD - 针对单个 expense 记录操作 IndexedDB
+  const saveExpense = useCallback((record: ExpenseRecord) => {
+    const now = new Date().toISOString();
+    const enrichedRecord: ExpenseRecord = {
+      ...record,
+      createdAt: record.createdAt || now,
+      updatedAt: now,
+    };
+
+    setData((prev) => {
+      const expenses = prev.expenses || [];
+      const exists = expenses.some((e) => e.id === record.id);
+      const nextExpenses = exists
+        ? expenses.map((e) => (e.id === record.id ? enrichedRecord : e))
+        : [enrichedRecord, ...expenses];
+      nextExpenses.sort((a, b) => b.date.localeCompare(a.date));
+      return { ...prev, expenses: nextExpenses };
+    });
+
+    expenseRepository.save(enrichedRecord).catch(console.error);
+    syncMetaRepository.incrementRevision().catch(console.error);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
+
+  const deleteExpense = useCallback((id: string) => {
+    setData((prev) => ({
+      ...prev,
+      expenses: (prev.expenses || []).filter((e) => e.id !== id),
+    }));
+
+    expenseRepository.softDelete(id).catch(console.error);
+    syncMetaRepository.incrementRevision().catch(console.error);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
+
   // 4. 车辆档案 CRUD - 针对单个 vehicle 记录操作 IndexedDB
   const saveVehicle = useCallback((record: VehicleProfile) => {
     const now = new Date().toISOString();
@@ -425,6 +462,7 @@ export function useLedgerData() {
     const empty: LedgerFullData = {
       salaries: [],
       overtimes: [],
+      expenses: [],
       gifts: [],
       vehicles: [],
       fuels: [],
@@ -546,6 +584,8 @@ export function useLedgerData() {
     deleteOvertime,
     saveGift,
     deleteGift,
+    saveExpense,
+    deleteExpense,
     saveVehicle,
     deleteVehicle,
     saveFuel,

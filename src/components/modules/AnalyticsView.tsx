@@ -9,6 +9,7 @@ import {
   Gift,
   PieChart,
   ShieldCheck,
+  ShoppingBag,
   TrendingUp,
 } from 'lucide-react';
 import { LedgerFullData, MaintenanceCategory } from '../../types';
@@ -24,19 +25,69 @@ interface AnalyticsViewProps {
 
 export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, hidePrivacy }) => {
   const { salaries, overtimes, gifts, fuels, maintenances, vehicles, settings } = data;
+  const expenses = data.expenses || [];
 
   // 年份选择器
   const availableYears = useMemo(() => {
     const years = new Set<string>();
     salaries.forEach((s) => years.add(s.month.slice(0, 4)));
     overtimes.forEach((o) => years.add(o.date.slice(0, 4)));
+    expenses.forEach((e) => years.add(e.date.slice(0, 4)));
     gifts.forEach((g) => years.add(g.date.slice(0, 4)));
     fuels.forEach((f) => years.add(f.date.slice(0, 4)));
     if (years.size === 0) years.add(new Date().getFullYear().toString());
     return Array.from(years).sort().reverse();
-  }, [salaries, overtimes, gifts, fuels]);
+  }, [salaries, overtimes, expenses, gifts, fuels]);
 
   const [selectedYear, setSelectedYear] = useState<string>(availableYears[0] || '2026');
+
+  // 0. 日常开销、医疗健康、人情随礼与专项开支月度柱状图数据
+  const expensesChartData = useMemo(() => {
+    const monthsMap: Record<string, { living: number; special: number }> = {};
+    for (let m = 1; m <= 12; m++) {
+      const mStr = `${selectedYear}-${String(m).padStart(2, '0')}`;
+      monthsMap[mStr] = { living: 0, special: 0 };
+    }
+
+    expenses
+      .filter((e) => e.date.startsWith(selectedYear))
+      .forEach((e) => {
+        const mStr = e.date.slice(0, 7);
+        if (monthsMap[mStr]) {
+          if (e.type === 'living') monthsMap[mStr].living += e.amount;
+          else monthsMap[mStr].special += e.amount; // 医疗 + 人情 + 教育 + 旅行
+        }
+      });
+
+    return Object.entries(monthsMap)
+      .map(([mStr, val]) => ({
+        label: `${parseInt(mStr.slice(5))}月`,
+        value1: val.living,
+        value2: val.special,
+        label1: '日常生活(¥)',
+        label2: '医疗/人情/专项(¥)',
+      }))
+      .sort((a, b) => parseInt(a.label) - parseInt(b.label));
+  }, [expenses, selectedYear]);
+
+  // 0.5 生活/医疗/人情/教育/旅行开销大类占比环形图
+  const expenseTypeSegments = useMemo(() => {
+    const yearExpenses = expenses.filter((e) => e.date.startsWith(selectedYear));
+    const living = yearExpenses.filter((e) => e.type === 'living').reduce((s, e) => s + e.amount, 0);
+    const medical = yearExpenses.filter((e) => e.type === 'medical').reduce((s, e) => s + e.amount, 0);
+    const gift = yearExpenses.filter((e) => e.type === 'gift').reduce((s, e) => s + e.amount, 0);
+    const education = yearExpenses.filter((e) => e.type === 'education').reduce((s, e) => s + e.amount, 0);
+    const travel = yearExpenses.filter((e) => e.type === 'travel').reduce((s, e) => s + e.amount, 0);
+
+    const segments = [
+      { label: '日常生活', value: living, color: '#3b82f6' },
+      { label: '医疗健康', value: medical, color: '#f43f5e' },
+      { label: '人情往来', value: gift, color: '#ec4899' },
+      { label: '教育专项', value: education, color: '#a855f7' },
+      { label: '旅行度假', value: travel, color: '#f59e0b' },
+    ];
+    return segments.filter((s) => s.value > 0);
+  }, [expenses, selectedYear]);
 
   // 1. 薪资月度走势图数据
   const salaryChartData = useMemo(() => {
@@ -242,6 +293,29 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, hidePrivacy 
         </div>
       </div>
 
+      {/* 1.5 日常生活与教育专项开销月度柱状对比 */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <ShoppingBag className="w-4 h-4 text-zinc-500" />
+              <span>{selectedYear} 年度日常生活与各项综合开支走势</span>
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">日常生活高频开销 vs 医疗、人情、教育与旅行综合支出</p>
+          </div>
+        </div>
+
+        <BarChart
+          data={expensesChartData}
+          legend1="日常生活(¥)"
+          legend2="医疗/人情/专项(¥)"
+          color1="#3b82f6"
+          color2="#f59e0b"
+          valueFormatter={(v) => `¥${v}`}
+          height={200}
+        />
+      </div>
+
       {/* 2. 两列柱状对比：加班工时 vs 人情随礼 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 加班工时月度柱状图 */}
@@ -285,8 +359,32 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ data, hidePrivacy 
         </div>
       </div>
 
-      {/* 3. 两列环形图：汽车养车费用结构 vs 人情送礼关系分类 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 3. 三列环形图：生活教育旅行结构 vs 汽车养车费用结构 vs 人情送礼关系分类 */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* 生活/医疗/人情/教育/旅行大类开支结构 */}
+        <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
+          <div>
+            <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <ShoppingBag className="w-4 h-4 text-zinc-500" />
+              <span>{selectedYear} 综合支出大类结构</span>
+            </h3>
+            <p className="text-xs text-zinc-400 mt-0.5">日常/医疗/人情/教育/旅行五大板块占比</p>
+          </div>
+
+          <div className="py-2">
+            <DoughnutChart
+              segments={expenseTypeSegments}
+              centerTitle={formatCurrency(
+                expenseTypeSegments.reduce((acc, c) => acc + c.value, 0),
+                hidePrivacy
+              )}
+              centerSubtitle="年度开支总额"
+              valueFormatter={(v) => `¥${v}`}
+              size={170}
+            />
+          </div>
+        </div>
+
         {/* 养车全费用占比 */}
         <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
           <div>

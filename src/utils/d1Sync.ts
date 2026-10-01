@@ -153,7 +153,23 @@ CREATE TABLE IF NOT EXISTS maintenance_records (
     FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
 );
 
--- 7. 用户隐私与偏好配置表
+-- 7. 日常生活开销与教育支出表
+CREATE TABLE IF NOT EXISTS expenses (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,                 -- YYYY-MM-DD
+    type TEXT NOT NULL,                 -- living (日常生活) / education (教育支出)
+    category TEXT NOT NULL,             -- 餐饮美食/居家物业/课外培优/学费学杂等
+    amount REAL NOT NULL,               -- 支出金额
+    payer TEXT,                         -- 出资人
+    payment_method TEXT,                -- 支付渠道
+    beneficiary TEXT,                   -- 受益对象
+    remarks TEXT,                       -- 备注说明
+    created_at TEXT NOT NULL,
+    updated_at TEXT,
+    deleted_at TEXT
+);
+
+-- 8. 用户隐私与偏好配置表
 CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,
@@ -319,6 +335,13 @@ export function generateCloudflareD1SqlDump(data: LedgerFullData): string {
     );
   }
 
+  // Expenses (日常生活与教育支出)
+  for (const exp of data.expenses || []) {
+    lines.push(
+      `INSERT OR REPLACE INTO expenses VALUES (${esc(exp.id)}, ${esc(exp.date)}, ${esc(exp.type)}, ${esc(exp.category)}, ${esc(exp.amount)}, ${esc(exp.payer || '')}, ${esc(exp.paymentMethod || '')}, ${esc(exp.beneficiary || '')}, ${esc(exp.remarks || '')}, ${esc(exp.createdAt)}, ${esc(exp.updatedAt || exp.createdAt)}, ${esc(exp.deletedAt || null)});`
+    );
+  }
+
   // App Settings
   if (data.settings) {
     lines.push(
@@ -364,6 +387,7 @@ export async function syncToCloudflareWorker(workerUrl: string, apiToken: string
       vehicles: data.vehicles,
       fuels: data.fuels,
       maintenances: data.maintenances,
+      expenses: data.expenses || [],
       settings: data.settings,
       syncMeta: data.syncMeta,
     }),

@@ -91,6 +91,7 @@ export async function uploadBackupToOneDrive(
       data: {
         salaries: data.salaries,
         overtimes: data.overtimes,
+        expenses: data.expenses || [],
         gifts: data.gifts,
         vehicles: data.vehicles,
         fuels: data.fuels,
@@ -220,6 +221,7 @@ export async function downloadBackupFromOneDrive(
     return {
       salaries: d.salaries || [],
       overtimes: d.overtimes || [],
+      expenses: d.expenses || [],
       gifts: d.gifts || [],
       vehicles: d.vehicles || [],
       fuels: d.fuels || [],
@@ -235,6 +237,7 @@ export async function downloadBackupFromOneDrive(
   return {
     salaries: parsed.salaries || [],
     overtimes: parsed.overtimes || [],
+    expenses: parsed.expenses || [],
     gifts: parsed.gifts || [],
     vehicles: parsed.vehicles || [],
     fuels: parsed.fuels || [],

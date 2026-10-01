@@ -1,4 +1,4 @@
-import { FuelRecord, LedgerFullData, MaintenanceRecord, OvertimeRecord, SalaryRecord, SocialGiftRecord } from '../types';
+import { ExpenseRecord, FuelRecord, LedgerFullData, MaintenanceRecord, OvertimeRecord, SalaryRecord, SocialGiftRecord } from '../types';
 
 /**
  * 格式化 CSV 字段转义
@@ -88,6 +88,33 @@ export function exportOvertimesToCsv(overtimes: OvertimeRecord[]): string {
     escapeCsv(o.compTimeHoursUsed || 0),
     escapeCsv(o.reason),
     escapeCsv(o.notes),
+  ]);
+
+  return '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+}
+
+/**
+ * 导出日常生活与教育支出为 CSV
+ */
+export function exportExpensesToCsv(expenses: ExpenseRecord[]): string {
+  const headers = ['支出日期', '业务大类', '细分项目', '金额(元)', '出资人员', '支付渠道', '受益对象/关系人', '备注说明'];
+  const typeMap: Record<string, string> = {
+    living: '日常生活开销',
+    medical: '医疗健康支出',
+    gift: '人情往来随礼',
+    education: '教育专项支出',
+    travel: '旅游度假支出',
+  };
+
+  const rows = expenses.map((e) => [
+    escapeCsv(e.date),
+    escapeCsv(typeMap[e.type] || e.type),
+    escapeCsv(e.category),
+    escapeCsv(e.amount),
+    escapeCsv(e.payer || '本人'),
+    escapeCsv(e.paymentMethod || '微信支付'),
+    escapeCsv(e.beneficiary || ''),
+    escapeCsv(e.remarks),
   ]);
 
   return '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
@@ -235,6 +262,7 @@ export function parseVersionedJson(jsonStr: string): LedgerFullData {
     return {
       salaries: Array.isArray(d.salaries) ? d.salaries : [],
       overtimes: Array.isArray(d.overtimes) ? d.overtimes : [],
+      expenses: Array.isArray(d.expenses) ? d.expenses : [],
       gifts: Array.isArray(d.gifts) ? d.gifts : [],
       vehicles: Array.isArray(d.vehicles) ? d.vehicles : [],
       fuels: Array.isArray(d.fuels) ? d.fuels : [],
@@ -247,10 +275,11 @@ export function parseVersionedJson(jsonStr: string): LedgerFullData {
   }
 
   // 兼容 V1 扁平格式
-  if (parsed.salaries || parsed.overtimes || parsed.gifts || parsed.vehicles) {
+  if (parsed.salaries || parsed.overtimes || parsed.gifts || parsed.vehicles || parsed.expenses) {
     return {
       salaries: Array.isArray(parsed.salaries) ? parsed.salaries : [],
       overtimes: Array.isArray(parsed.overtimes) ? parsed.overtimes : [],
+      expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
       gifts: Array.isArray(parsed.gifts) ? parsed.gifts : [],
       vehicles: Array.isArray(parsed.vehicles) ? parsed.vehicles : [],
       fuels: Array.isArray(parsed.fuels) ? parsed.fuels : [],

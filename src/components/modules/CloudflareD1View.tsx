@@ -155,7 +155,29 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {d1Config.workerUrl && (
+            <button
+              onClick={onManualSync}
+              disabled={isSyncing}
+              className="px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? '同步中...' : '立即同步至 D1'}</span>
+            </button>
+          )}
+
+          {d1Config.workerUrl && (
+            <button
+              onClick={handlePullFromCloud}
+              disabled={pullLoading}
+              className="px-3.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>{pullLoading ? '拉取中...' : '从 D1 拉取恢复'}</span>
+            </button>
+          )}
+
           {d1Config.workerUrl && (
             <button
               onClick={handleRunHealthCheck}
@@ -179,120 +201,53 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </div>
       </div>
 
-      {/* 状态总览卡片 */}
-      <div className="p-5 sm:p-6 rounded-2xl bg-zinc-900 text-white shadow-xs border border-zinc-800 relative overflow-hidden">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] font-bold tracking-wider text-zinc-400 uppercase">
-                Cloudflare D1 Production Hub
-              </span>
-            </div>
-            <h3 className="text-base font-bold text-white">
-              {d1Config.workerUrl ? '已连接 Cloudflare D1 边缘节点' : '当前处于本地离线沙盒存储模式'}
-            </h3>
-            <p className="text-xs text-zinc-400 max-w-xl leading-relaxed">
-              数据优先保存在本地沙盒副本。配置 Worker 凭据后，将通过增量同步与 D1 数据库进行双向安全通信。
-            </p>
-            {d1Config.workerUrl && (
-              <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
-                <span className={`px-2 py-0.5 rounded-full border ${
-                  d1Config.autoSync
-                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                }`}>
-                  {d1Config.autoSync
-                    ? `🟢 操作后自动推送: 开 (${d1Config.autoSyncDelaySeconds ?? 15}秒缓冲)`
-                    : '⚪ 操作后自动推送: 关 (仅手动)'}
-                </span>
-                <span className="text-zinc-500">· 支持随时手动双向同步</span>
-              </div>
-            )}
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
-            {d1Config.workerUrl && (
-              <button
-                onClick={onManualSync}
-                disabled={isSyncing}
-                className="px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-white text-zinc-900 text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
-                <span>{isSyncing ? '同步中...' : '立即同步至 D1'}</span>
-              </button>
-            )}
-
-            {d1Config.workerUrl && (
-              <button
-                onClick={handlePullFromCloud}
-                disabled={pullLoading}
-                className="px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-medium border border-zinc-700 flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>{pullLoading ? '拉取中...' : '从 D1 拉取恢复'}</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* 自动同步倒计时调度提醒 */}
-        {pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined && (
-          <div className="mt-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200">
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
-              <span>
-                检测到账目变动，将在 <b>{pendingAutoSyncSeconds}</b> 秒后自动推送同步至 D1。期间进行连续操作将自动防抖合并。
-              </span>
-            </div>
-            <button
-              onClick={onManualSync}
-              disabled={isSyncing}
-              className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-900 text-[11px] font-semibold shrink-0 cursor-pointer"
-            >
-              立刻推送
-            </button>
-          </div>
-        )}
-
-        {d1Config.lastSyncTime && (
-          <div className="mt-4 pt-3 border-t border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
-            <span>上次同步成功时间: {d1Config.lastSyncTime}</span>
-            <span className="text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5" /> 数据库状态就绪 (v2.1)
+      {/* 自动同步倒计时调度提醒 */}
+      {pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined && (
+        <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200 shadow-xs">
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+            <span>
+              检测到账目变动，将在 <b>{pendingAutoSyncSeconds}</b> 秒后自动推送同步至 D1。期间进行连续操作将自动防抖合并。
             </span>
           </div>
-        )}
-
-        {healthStatusResult && (
-          <div
-            className={`mt-3 p-3 rounded-xl text-xs flex items-center justify-between gap-3 ${
-              healthStatusResult.ok
-                ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-300'
-                : 'bg-rose-500/10 border border-rose-500/30 text-rose-300'
-            }`}
+          <button
+            onClick={onManualSync}
+            disabled={isSyncing}
+            className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shrink-0 cursor-pointer transition-colors"
           >
-            <span>{healthStatusResult.text}</span>
-          </div>
-        )}
+            立刻推送
+          </button>
+        </div>
+      )}
 
-        {syncError && (
-          <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs space-y-1">
-            <div className="flex items-center justify-between font-medium">
-              <span>同步异常: {syncError}</span>
-            </div>
-            <p className="text-[11px] text-rose-300/80">
-              请检查 Worker Secret 设置 (API_TOKEN) 以及是否已运行 <code className="font-mono bg-rose-950/40 px-1 py-0.5 rounded">wrangler d1 migrations apply</code>。
-            </p>
-          </div>
-        )}
+      {healthStatusResult && (
+        <div
+          className={`p-3.5 rounded-2xl text-xs flex items-center justify-between gap-3 border shadow-xs ${
+            healthStatusResult.ok
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300'
+              : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/60 text-rose-800 dark:text-rose-300'
+          }`}
+        >
+          <span>{healthStatusResult.text}</span>
+        </div>
+      )}
 
-        {pullMsg && (
-          <div className="mt-3 p-2.5 rounded-xl bg-zinc-800 border border-zinc-700 text-zinc-200 text-xs">
-            {pullMsg}
+      {syncError && (
+        <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 text-rose-800 dark:text-rose-300 text-xs space-y-1 shadow-xs">
+          <div className="flex items-center justify-between font-medium">
+            <span>同步异常: {syncError}</span>
           </div>
-        )}
-      </div>
+          <p className="text-[11px] opacity-80">
+            请检查 Worker Secret 设置 (API_TOKEN) 以及是否已运行 <code className="font-mono bg-rose-200/60 dark:bg-rose-900/60 px-1 py-0.5 rounded">wrangler d1 migrations apply</code>。
+          </p>
+        </div>
+      )}
+
+      {pullMsg && (
+        <div className="p-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs shadow-xs">
+          {pullMsg}
+        </div>
+      )}
 
       {/* 标签栏导航 */}
       <div className="flex items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800 pb-2 text-xs font-medium">
