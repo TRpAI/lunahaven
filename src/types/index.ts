@@ -195,7 +195,8 @@ export interface CloudflareD1Config {
   lastSyncTime: string | null;
   syncStatus: 'idle' | 'syncing' | 'success' | 'error';
   syncMode: 'local_only' | 'cloudflare_d1';
-  autoSync: boolean;
+  autoSync: boolean; // 用户操作后自动推送同步
+  autoSyncDelaySeconds?: number; // 操作后延迟推送秒数，例如 5, 15, 30, 60, 300
   errorMessage?: string;
 }
 

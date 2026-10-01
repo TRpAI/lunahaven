@@ -23,6 +23,7 @@ interface CloudflareD1ViewProps {
   onImportData: (data: LedgerFullData) => void;
   onManualSync: () => Promise<boolean>;
   isSyncing: boolean;
+  pendingAutoSyncSeconds?: number | null;
   syncError: string | null;
 }
 
@@ -33,12 +34,15 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   onImportData,
   onManualSync,
   isSyncing,
+  pendingAutoSyncSeconds,
   syncError,
 }) => {
   const { d1Config } = settings;
 
   const [workerUrlInput, setWorkerUrlInput] = useState(d1Config.workerUrl || '');
   const [apiTokenInput, setApiTokenInput] = useState(d1Config.apiToken || '');
+  const [autoSyncInput, setAutoSyncInput] = useState<boolean>(d1Config.autoSync ?? true);
+  const [autoSyncDelayInput, setAutoSyncDelayInput] = useState<number>(d1Config.autoSyncDelaySeconds ?? 15);
   const [activeTab, setActiveTab] = useState<'config' | 'tutorial'>('config');
 
   const [pullLoading, setPullLoading] = useState(false);
@@ -57,9 +61,11 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         ...d1Config,
         workerUrl: workerUrlInput.trim(),
         apiToken: apiTokenInput.trim(),
+        autoSync: autoSyncInput,
+        autoSyncDelaySeconds: autoSyncDelayInput,
       },
     });
-    alert('Cloudflare D1 生产同步配置已保存！');
+    alert('Cloudflare D1 同步配置已成功保存！');
   };
 
   const handleExportSqlFile = () => {
@@ -189,6 +195,20 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
             <p className="text-xs text-zinc-400 max-w-xl leading-relaxed">
               数据优先保存在本地沙盒副本。配置 Worker 凭据后，将通过增量同步与 D1 数据库进行双向安全通信。
             </p>
+            {d1Config.workerUrl && (
+              <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px]">
+                <span className={`px-2 py-0.5 rounded-full border ${
+                  d1Config.autoSync
+                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                }`}>
+                  {d1Config.autoSync
+                    ? `🟢 操作后自动推送: 开 (${d1Config.autoSyncDelaySeconds ?? 15}秒缓冲)`
+                    : '⚪ 操作后自动推送: 关 (仅手动)'}
+                </span>
+                <span className="text-zinc-500">· 支持随时手动双向同步</span>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
@@ -215,6 +235,25 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
             )}
           </div>
         </div>
+
+        {/* 自动同步倒计时调度提醒 */}
+        {pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined && (
+          <div className="mt-4 p-3 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+              <span>
+                检测到账目变动，将在 <b>{pendingAutoSyncSeconds}</b> 秒后自动推送同步至 D1。期间进行连续操作将自动防抖合并。
+              </span>
+            </div>
+            <button
+              onClick={onManualSync}
+              disabled={isSyncing}
+              className="px-2.5 py-1 rounded-lg bg-amber-400 hover:bg-amber-300 text-zinc-900 text-[11px] font-semibold shrink-0 cursor-pointer"
+            >
+              立刻推送
+            </button>
+          </div>
+        )}
 
         {d1Config.lastSyncTime && (
           <div className="mt-4 pt-3 border-t border-zinc-800 text-[11px] text-zinc-400 flex items-center justify-between">
@@ -319,6 +358,56 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
                 onChange={(e) => setApiTokenInput(e.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
               />
+            </div>
+
+            {/* 操作触发自动推送同步设置 */}
+            <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                    操作后自动推送同步
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    在账本发生增删改变动后，自动将最新本地数据推送同步至 D1
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setAutoSyncInput(!autoSyncInput)}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                    autoSyncInput ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition-transform ${
+                      autoSyncInput ? 'translate-x-4.5' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
+              {autoSyncInput && (
+                <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <span className="text-zinc-700 dark:text-zinc-300 font-medium">
+                      操作后推送等待时间 (防抖缓冲)
+                    </span>
+                    <p className="text-[11px] text-zinc-400">连续多笔操作将在此时间段内合并为单次增量请求</p>
+                  </div>
+                  <select
+                    value={autoSyncDelayInput}
+                    onChange={(e) => setAutoSyncDelayInput(parseInt(e.target.value))}
+                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs focus:outline-hidden shrink-0"
+                  >
+                    <option value={0}>0 秒 (每次操作后立即推送)</option>
+                    <option value={5}>5 秒</option>
+                    <option value={15}>15 秒 (默认推荐)</option>
+                    <option value={30}>30 秒</option>
+                    <option value={60}>1 分钟</option>
+                    <option value={300}>5 分钟 (大批记录批量汇总结算)</option>
+                  </select>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2 pt-1">

@@ -23,7 +23,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     lastSyncTime: null,
     syncStatus: 'idle',
     syncMode: 'local_only',
-    autoSync: false,
+    autoSync: true,
+    autoSyncDelaySeconds: 15,
   },
   oneDriveConfig: {
     clientId: '',

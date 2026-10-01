@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppSettings } from '../types';
 import { hashPassword, verifyPasswordHash } from '../utils/crypto';
 import { verifyTOTPCode } from '../utils/totp';
 
 const DEMO_PIN_HASH = 'cWl5dWVfbWFzdGVyXzEyMzQ1Nl9hdXRoX3Yy';
+export const QIYUE_AUTH_STATUS_KEY = 'qiyue_auth_unlocked_v2';
+export const QIYUE_LAST_ACTIVE_KEY = 'qiyue_last_active_time_v2';
 
 export function usePrivacyLock(
   settings: AppSettings,
@@ -13,44 +15,161 @@ export function usePrivacyLock(
   const hasPassword = Boolean(settings.pinHash && settings.pinHash !== DEMO_PIN_HASH);
   const is2FAEnabled = Boolean(settings.isTwoFactorEnabled && settings.twoFactorSecret);
 
+  // 初始化解锁状态：
+  // 1. 若尚未创建密码，强制未解锁（引导首次新建主密码）
+  // 2. 若已创建密码且处于已授权状态：计算上次活跃时间是否在有效设置时长内。如果在有效期内，刷新页面不锁屏！
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
-    // 首次登入无密码时，强制未解锁状态，阻断访问并引导新建主密码
-    if (!hasPassword) {
+    // 检查 localStorage 初始状态
+    try {
+      const authStatus = localStorage.getItem(QIYUE_AUTH_STATUS_KEY);
+      if (authStatus !== 'true') {
+        return false;
+      }
+
+      const lastActiveStr = localStorage.getItem(QIYUE_LAST_ACTIVE_KEY);
+      if (!lastActiveStr) {
+        localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(Date.now()));
+        return true;
+      }
+
+      const lastActive = parseInt(lastActiveStr, 10);
+      if (isNaN(lastActive)) {
+        return false;
+      }
+
+      const autoLockMinutes = typeof settings.autoLockMinutes === 'number' ? settings.autoLockMinutes : 15;
+      // 0 代表从不自动锁定
+      if (autoLockMinutes === 0) {
+        return true;
+      }
+
+      const elapsedMinutes = (Date.now() - lastActive) / 60000;
+      if (elapsedMinutes < autoLockMinutes) {
+        // 在无操作有效期内：刷新页面不锁屏！更新活跃时间
+        localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(Date.now()));
+        return true;
+      } else {
+        // 已超过设定无操作时长：锁定屏幕
+        localStorage.removeItem(QIYUE_AUTH_STATUS_KEY);
+        return false;
+      }
+    } catch {
       return false;
     }
-    const sessionAuth = sessionStorage.getItem('qiyue_session_unlocked');
-    return sessionAuth === 'true';
   });
 
-  const [lastActiveTime, setLastActiveTime] = useState<number>(Date.now());
-
-  const recordActivity = () => {
-    setLastActiveTime(Date.now());
-  };
-
-  useEffect(() => {
-    // 若未创建密码，不可解锁
-    if (!hasPassword) {
-      setIsUnlocked(false);
-      sessionStorage.removeItem('qiyue_session_unlocked');
-      return;
+  const [lastActiveTime, setLastActiveTime] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(QIYUE_LAST_ACTIVE_KEY);
+      return saved ? parseInt(saved, 10) || Date.now() : Date.now();
+    } catch {
+      return Date.now();
     }
+  });
 
-    // 定时检查空闲自动锁定
-    const interval = setInterval(() => {
-      if (isUnlocked && settings.autoLockMinutes > 0) {
-        const elapsed = (Date.now() - lastActiveTime) / 1000 / 60;
-        if (elapsed >= settings.autoLockMinutes) {
-          setIsUnlocked(false);
-          sessionStorage.removeItem('qiyue_session_unlocked');
-        }
+  const lastWriteTimeRef = useRef<number>(Date.now());
+
+  // 记录用户交互与活跃行为（防抖写入 localStorage，避免过于频繁磁盘 I/O）
+  const recordActivity = useCallback(() => {
+    const now = Date.now();
+    setLastActiveTime(now);
+
+    if (now - lastWriteTimeRef.current > 1500) {
+      lastWriteTimeRef.current = now;
+      try {
+        localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(now));
+      } catch {
+        // ignore storage quota error
       }
-    }, 10000);
+    }
+  }, []);
 
-    return () => clearInterval(interval);
+  // 检查是否超过设定的无操作时间并执行自动锁定
+  const checkInactivityLock = useCallback(() => {
+    if (!isUnlocked || !hasPassword) return;
+
+    const autoLockMinutes = typeof settings.autoLockMinutes === 'number' ? settings.autoLockMinutes : 15;
+    if (autoLockMinutes === 0) return; // 0 = 从不自动锁定
+
+    try {
+      const savedLastActiveStr = localStorage.getItem(QIYUE_LAST_ACTIVE_KEY);
+      const effectiveLastActive = savedLastActiveStr
+        ? parseInt(savedLastActiveStr, 10) || lastActiveTime
+        : lastActiveTime;
+      const elapsedMinutes = (Date.now() - effectiveLastActive) / 60000;
+
+      if (elapsedMinutes >= autoLockMinutes) {
+        setIsUnlocked(false);
+        localStorage.removeItem(QIYUE_AUTH_STATUS_KEY);
+      }
+    } catch {
+      // ignore
+    }
   }, [isUnlocked, hasPassword, settings.autoLockMinutes, lastActiveTime]);
 
-  // 验证第一步主密码 (PBKDF2-SHA256，支持旧版本透明升级与默认兜底)
+  // 全局用户事件监听与无操作定时检查
+  useEffect(() => {
+    if (!isUnlocked || !hasPassword) return;
+
+    // 1. 每 5 秒轮询检查一次空闲超时
+    const timer = setInterval(() => {
+      checkInactivityLock();
+    }, 5000);
+
+    // 2. 页面可见性改变时检查（例如切换回标签页、锁屏后重新亮屏）
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkInactivityLock();
+      } else {
+        // 页面离开时即时记录离开时间点
+        try {
+          localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(Date.now()));
+        } catch {}
+      }
+    };
+
+    // 3. 监听全局用户交互操作（点击、按键、触控、滚动）
+    const handleUserInteraction = () => {
+      recordActivity();
+    };
+
+    window.addEventListener('click', handleUserInteraction, { passive: true });
+    window.addEventListener('keydown', handleUserInteraction, { passive: true });
+    window.addEventListener('touchstart', handleUserInteraction, { passive: true });
+    window.addEventListener('scroll', handleUserInteraction, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('click', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+      window.removeEventListener('scroll', handleUserInteraction);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isUnlocked, hasPassword, checkInactivityLock, recordActivity]);
+
+  // 当用户数据初次从 IndexedDB 异步加载就绪后，若已通过认证且未超时，维持解锁
+  useEffect(() => {
+    if (hasPassword && !isUnlocked) {
+      try {
+        const authStatus = localStorage.getItem(QIYUE_AUTH_STATUS_KEY);
+        if (authStatus === 'true') {
+          const lastActiveStr = localStorage.getItem(QIYUE_LAST_ACTIVE_KEY);
+          const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : 0;
+          const autoLockMinutes = typeof settings.autoLockMinutes === 'number' ? settings.autoLockMinutes : 15;
+          const elapsedMinutes = (Date.now() - lastActive) / 60000;
+
+          if (autoLockMinutes === 0 || elapsedMinutes < autoLockMinutes) {
+            setIsUnlocked(true);
+            setLastActiveTime(Date.now());
+          }
+        }
+      } catch {}
+    }
+  }, [hasPassword, settings.autoLockMinutes, isUnlocked]);
+
+  // 验证第一步主密码 (PBKDF2-SHA256)
   const verifyPassword = async (
     inputPass: string
   ): Promise<{ success: boolean; requires2FA: boolean }> => {
@@ -66,7 +185,7 @@ export function usePrivacyLock(
       return { success: false, requires2FA: false };
     }
 
-    // 若原密码是旧 Base64 或明文，验证通过后自动无缝升级为高强度 PBKDF2
+    // 若原密码是旧 Base64 或弱哈希，验证通过后自动无缝升级为高强度 PBKDF2
     if (needsRehash && newHash && newSalt) {
       onUpdateSettings({
         pinHash: newHash,
@@ -78,9 +197,13 @@ export function usePrivacyLock(
       return { success: true, requires2FA: true };
     }
 
+    const now = Date.now();
     setIsUnlocked(true);
-    sessionStorage.setItem('qiyue_session_unlocked', 'true');
-    setLastActiveTime(Date.now());
+    try {
+      localStorage.setItem(QIYUE_AUTH_STATUS_KEY, 'true');
+      localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(now));
+    } catch {}
+    setLastActiveTime(now);
     return { success: true, requires2FA: false };
   };
 
@@ -93,9 +216,13 @@ export function usePrivacyLock(
     if (/^\d{6}$/.test(cleanInput)) {
       const isTotpValid = await verifyTOTPCode(cleanInput, settings.twoFactorSecret);
       if (isTotpValid) {
+        const now = Date.now();
         setIsUnlocked(true);
-        sessionStorage.setItem('qiyue_session_unlocked', 'true');
-        setLastActiveTime(Date.now());
+        try {
+          localStorage.setItem(QIYUE_AUTH_STATUS_KEY, 'true');
+          localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(now));
+        } catch {}
+        setLastActiveTime(now);
         return true;
       }
     }
@@ -114,9 +241,13 @@ export function usePrivacyLock(
         twoFactorBackupCodes: updatedBackupCodes,
       });
 
+      const now = Date.now();
       setIsUnlocked(true);
-      sessionStorage.setItem('qiyue_session_unlocked', 'true');
-      setLastActiveTime(Date.now());
+      try {
+        localStorage.setItem(QIYUE_AUTH_STATUS_KEY, 'true');
+        localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(now));
+      } catch {}
+      setLastActiveTime(now);
       return true;
     }
 
@@ -132,9 +263,13 @@ export function usePrivacyLock(
       pinHash: hash,
       passwordSalt: salt,
     });
+    const now = Date.now();
     setIsUnlocked(true);
-    sessionStorage.setItem('qiyue_session_unlocked', 'true');
-    setLastActiveTime(Date.now());
+    try {
+      localStorage.setItem(QIYUE_AUTH_STATUS_KEY, 'true');
+      localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(now));
+    } catch {}
+    setLastActiveTime(now);
     return true;
   };
 
@@ -156,10 +291,13 @@ export function usePrivacyLock(
     });
   };
 
-  // 立即锁屏 / 登出
+  // 立即手动锁屏 / 登出
   const lockNow = () => {
     setIsUnlocked(false);
-    sessionStorage.removeItem('qiyue_session_unlocked');
+    try {
+      localStorage.removeItem(QIYUE_AUTH_STATUS_KEY);
+      localStorage.removeItem(QIYUE_LAST_ACTIVE_KEY);
+    } catch {}
   };
 
   return {

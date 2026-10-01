@@ -43,6 +43,7 @@ export default function App() {
     refreshData,
     syncWithCloudflare,
     isSyncing,
+    pendingAutoSyncSeconds,
     syncError,
   } = useLedgerData();
 
@@ -111,6 +112,7 @@ export default function App() {
         onManualSync={syncWithCloudflare}
         onRefreshData={refreshData}
         isSyncing={isSyncing}
+        pendingAutoSyncSeconds={pendingAutoSyncSeconds}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         activeTab={activeTab}
@@ -200,6 +202,7 @@ export default function App() {
               onImportData={importFullData}
               onManualSync={syncWithCloudflare}
               isSyncing={isSyncing}
+              pendingAutoSyncSeconds={pendingAutoSyncSeconds}
               syncError={syncError}
             />
           )}

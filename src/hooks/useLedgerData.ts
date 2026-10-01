@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   AppSettings,
   FuelRecord,
@@ -11,7 +11,7 @@ import {
 } from '../types';
 import { syncToCloudflareWorker } from '../utils/d1Sync';
 import { processFuelRecords } from '../utils/fuelCalculator';
-import { clearAllLedgerData, loadLedgerData, resetToSampleData } from '../utils/storage';
+import { clearAllLedgerData, loadLedgerData, resetToSampleData, saveLedgerData } from '../utils/storage';
 import {
   clearAllIndexedDB,
   fuelRepository,
@@ -33,6 +33,14 @@ export function useLedgerData() {
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  // 记录最新数据与自动同步倒计时
+  const latestDataRef = useRef<LedgerFullData>(data);
+  latestDataRef.current = data;
+
+  const autoSyncTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const countdownTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [pendingAutoSyncSeconds, setPendingAutoSyncSeconds] = useState<number | null>(null);
+
   // 页面加载时自动从 IndexedDB 异步读取完整最新数据（并自动完成 LocalStorage 迁移）
   useEffect(() => {
     let isMounted = true;
@@ -49,6 +57,100 @@ export function useLedgerData() {
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  // 用户操作触发后的自动推送调度（防抖合并 + 可配置延迟时间）
+  const scheduleAutoPushSync = useCallback(() => {
+    const current = latestDataRef.current;
+    const d1Config = current.settings.d1Config;
+    if (!d1Config?.workerUrl || d1Config.autoSync === false) {
+      return;
+    }
+
+    const delaySeconds = typeof d1Config.autoSyncDelaySeconds === 'number'
+      ? d1Config.autoSyncDelaySeconds
+      : 15;
+
+    // 清除旧的定时器防抖重新计时
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+      autoSyncTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+
+    // 0 秒表示即时同步
+    if (delaySeconds <= 0) {
+      setPendingAutoSyncSeconds(null);
+      syncToCloudflareWorker(d1Config.workerUrl, d1Config.apiToken, current)
+        .then(() => {
+          const nowStr = new Date().toLocaleString('zh-CN');
+          const updatedSettings: AppSettings = {
+            ...current.settings,
+            d1Config: {
+              ...d1Config,
+              lastSyncTime: nowStr,
+              syncStatus: 'success',
+              errorMessage: undefined,
+            },
+          };
+          setData((prev) => ({ ...prev, settings: updatedSettings }));
+          settingsRepository.saveSettings(updatedSettings).catch(console.error);
+          saveLedgerData({ ...current, settings: updatedSettings });
+        })
+        .catch((err) => {
+          console.warn('Instant auto push error:', err);
+          setSyncError(err.message || '自动同步失败');
+        });
+      return;
+    }
+
+    setPendingAutoSyncSeconds(delaySeconds);
+    let remaining = delaySeconds;
+
+    countdownTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+        countdownTimerRef.current = null;
+        setPendingAutoSyncSeconds(null);
+      } else {
+        setPendingAutoSyncSeconds(remaining);
+      }
+    }, 1000);
+
+    autoSyncTimerRef.current = setTimeout(async () => {
+      try {
+        const curData = latestDataRef.current;
+        const curConfig = curData.settings.d1Config;
+        if (!curConfig?.workerUrl) return;
+
+        setIsSyncing(true);
+        setSyncError(null);
+        await syncToCloudflareWorker(curConfig.workerUrl, curConfig.apiToken, curData);
+        const nowStr = new Date().toLocaleString('zh-CN');
+        const updatedSettings: AppSettings = {
+          ...curData.settings,
+          d1Config: {
+            ...curConfig,
+            lastSyncTime: nowStr,
+            syncStatus: 'success',
+            errorMessage: undefined,
+          },
+        };
+        setData((prev) => ({ ...prev, settings: updatedSettings }));
+        settingsRepository.saveSettings(updatedSettings).catch(console.error);
+        saveLedgerData({ ...curData, settings: updatedSettings });
+      } catch (err: any) {
+        console.warn('Auto push sync error:', err);
+        setSyncError(err.message || '自动同步失败');
+      } finally {
+        setIsSyncing(false);
+        setPendingAutoSyncSeconds(null);
+      }
+    }, delaySeconds * 1000);
   }, []);
 
   // 1. 工资 CRUD - 针对单个 salary 记录操作 IndexedDB
@@ -69,10 +171,11 @@ export function useLedgerData() {
       return { ...prev, salaries };
     });
 
-    // 单记录异步写入 IndexedDB
+    // 单记录异步写入 IndexedDB 并调度自动同步
     salaryRepository.save(enrichedRecord).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   const deleteSalary = useCallback((id: string) => {
     setData((prev) => ({
@@ -83,7 +186,8 @@ export function useLedgerData() {
     // 软删除标记并更新版本号
     salaryRepository.softDelete(id).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   // 2. 加班工时 CRUD - 针对单个 overtime 记录操作 IndexedDB
   const saveOvertime = useCallback((record: OvertimeRecord) => {
@@ -105,7 +209,8 @@ export function useLedgerData() {
 
     overtimeRepository.save(enrichedRecord).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   const deleteOvertime = useCallback((id: string) => {
     setData((prev) => ({
@@ -115,7 +220,8 @@ export function useLedgerData() {
 
     overtimeRepository.softDelete(id).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   // 3. 人情往来 CRUD - 针对单个 gift 记录操作 IndexedDB
   const saveGift = useCallback((record: SocialGiftRecord) => {
@@ -137,7 +243,8 @@ export function useLedgerData() {
 
     giftRepository.save(enrichedRecord).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   const deleteGift = useCallback((id: string) => {
     setData((prev) => ({
@@ -147,7 +254,8 @@ export function useLedgerData() {
 
     giftRepository.softDelete(id).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   // 4. 车辆档案 CRUD - 针对单个 vehicle 记录操作 IndexedDB
   const saveVehicle = useCallback((record: VehicleProfile) => {
@@ -168,7 +276,8 @@ export function useLedgerData() {
 
     vehicleRepository.save(enrichedRecord).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   const deleteVehicle = useCallback((id: string) => {
     setData((prev) => ({
@@ -180,7 +289,8 @@ export function useLedgerData() {
 
     vehicleRepository.softDelete(id).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   // 5. 加油/充电记录 CRUD - 针对单个 fuel 记录操作 IndexedDB
   const saveFuel = useCallback((record: FuelRecord) => {
@@ -213,7 +323,8 @@ export function useLedgerData() {
 
     fuelRepository.save(enrichedRecord).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   const deleteFuel = useCallback((id: string) => {
     setData((prev) => {
@@ -224,7 +335,8 @@ export function useLedgerData() {
 
     fuelRepository.softDelete(id).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   // 6. 汽车维保 CRUD - 针对单个 maintenance 记录操作 IndexedDB
   const saveMaintenance = useCallback((record: MaintenanceRecord) => {
@@ -263,7 +375,8 @@ export function useLedgerData() {
 
     maintenanceRepository.save(enrichedRecord).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
   const deleteMaintenance = useCallback((id: string) => {
     setData((prev) => ({
@@ -273,13 +386,15 @@ export function useLedgerData() {
 
     maintenanceRepository.softDelete(id).catch(console.error);
     syncMetaRepository.incrementRevision().catch(console.error);
-  }, []);
+    scheduleAutoPushSync();
+  }, [scheduleAutoPushSync]);
 
-  // 7. 设置项更新 - 独立存储在 IndexedDB settings store
+  // 7. 设置项更新 - 独立存储在 IndexedDB settings store 并同步到本地缓存
   const updateSettings = useCallback((newSettings: Partial<AppSettings>) => {
     setData((prev) => {
       const nextSettings: AppSettings = { ...prev.settings, ...newSettings };
       settingsRepository.saveSettings(nextSettings).catch(console.error);
+      saveLedgerData({ ...prev, settings: nextSettings });
       return { ...prev, settings: nextSettings };
     });
     syncMetaRepository.incrementRevision().catch(console.error);
@@ -289,6 +404,7 @@ export function useLedgerData() {
   const importFullData = useCallback((imported: LedgerFullData) => {
     setData(imported);
     saveAllToIndexedDB(imported).catch(console.error);
+    saveLedgerData(imported);
   }, []);
 
   // 9. 恢复演示数据 / 完全清空
@@ -322,6 +438,17 @@ export function useLedgerData() {
 
   // 10. 全局数据与缓存刷新（含本地 IndexedDB 重载与 Cloudflare D1 双向同步）
   const refreshData = useCallback(async () => {
+    // 手动刷新时清除等待中的自动同步定时器
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+      autoSyncTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setPendingAutoSyncSeconds(null);
+
     setIsSyncing(true);
     setSyncError(null);
     try {
@@ -363,8 +490,19 @@ export function useLedgerData() {
     }
   }, []);
 
-  // 11. Cloudflare D1 一键主动推送同步
+  // 11. Cloudflare D1 一键主动推送同步（手动触发）
   const syncWithCloudflare = useCallback(async () => {
+    // 清除等待中的自动同步定时器
+    if (autoSyncTimerRef.current) {
+      clearTimeout(autoSyncTimerRef.current);
+      autoSyncTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
+    }
+    setPendingAutoSyncSeconds(null);
+
     const { workerUrl, apiToken } = data.settings.d1Config;
     if (!workerUrl) {
       throw new Error('未配置 Cloudflare Worker API 地址');
@@ -421,6 +559,7 @@ export function useLedgerData() {
     refreshData,
     syncWithCloudflare,
     isSyncing,
+    pendingAutoSyncSeconds,
     syncError,
   };
 }

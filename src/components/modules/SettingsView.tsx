@@ -261,19 +261,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </form>
 
-        <div className="flex items-center justify-between text-xs pt-3 border-t border-zinc-100 dark:border-zinc-800">
-          <span className="text-zinc-500 dark:text-zinc-400">无操作自动锁定时间:</span>
-          <select
-            value={settings.autoLockMinutes}
-            onChange={(e) => onUpdateSettings({ autoLockMinutes: parseInt(e.target.value) })}
-            className="px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs focus:outline-hidden"
-          >
-            <option value={1}>1 分钟</option>
-            <option value={5}>5 分钟</option>
-            <option value={15}>15 分钟</option>
-            <option value={30}>30 分钟</option>
-            <option value={0}>从不自动锁定</option>
-          </select>
+        <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+            <div>
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">无操作自动锁定时间</span>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                在设定的无操作时间内刷新或重载页面保持解锁，超时后自动锁定保护隐私
+              </p>
+            </div>
+            <select
+              value={settings.autoLockMinutes}
+              onChange={(e) => onUpdateSettings({ autoLockMinutes: parseInt(e.target.value) })}
+              className="px-3 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs focus:outline-hidden shrink-0"
+            >
+              <option value={1}>1 分钟 (高安全)</option>
+              <option value={5}>5 分钟</option>
+              <option value={15}>15 分钟 (默认推荐)</option>
+              <option value={30}>30 分钟</option>
+              <option value={60}>1 小时</option>
+              <option value={240}>4 小时</option>
+              <option value={0}>从不自动锁定 (仅手动点击锁屏)</option>
+            </select>
+          </div>
         </div>
       </div>
 

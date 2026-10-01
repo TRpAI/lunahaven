@@ -21,6 +21,7 @@ interface NavbarProps {
   onManualSync: () => Promise<boolean> | void;
   onRefreshData?: () => Promise<{ success: boolean; isCloud?: boolean; time?: string; error?: string } | boolean>;
   isSyncing: boolean;
+  pendingAutoSyncSeconds?: number | null;
   theme: 'system' | 'light' | 'dark';
   onToggleTheme: () => void;
   activeTab: string;
@@ -35,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onManualSync,
   onRefreshData,
   isSyncing,
+  pendingAutoSyncSeconds,
   theme,
   onToggleTheme,
   activeTab,
@@ -110,21 +112,34 @@ export const Navbar: React.FC<NavbarProps> = ({
             disabled={isLoading}
             className={`flex items-center gap-1.5 p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-medium border transition-colors cursor-pointer disabled:opacity-50 ${
               hasCloud
-                ? 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600'
+                ? pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined
+                  ? 'border-amber-300 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300'
+                  : 'border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900 text-zinc-700 dark:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600'
                 : 'border-zinc-200/70 dark:border-zinc-800/70 bg-zinc-50/70 dark:bg-zinc-900/70 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 hover:border-zinc-400'
             }`}
             title={
               hasCloud
-                ? settings.d1Config.lastSyncTime
-                  ? `上次同步: ${settings.d1Config.lastSyncTime} (点击同步与刷新缓存)`
+                ? pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined
+                  ? `检测到最新变更，将在 ${pendingAutoSyncSeconds} 秒后自动同步至 D1 (点击可立即同步)`
+                  : settings.d1Config.lastSyncTime
+                  ? `上次同步: ${settings.d1Config.lastSyncTime} (点击手动双向同步与刷新)`
                   : '点击执行 Cloudflare D1 同步与缓存刷新'
                 : '本地离线存储模式 (点击立即重新读取并刷新缓存)'
             }
           >
             <RefreshCw className={`w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400 ${isLoading ? 'animate-spin' : ''}`} />
             <span className="hidden md:inline">
-              {isLoading ? '刷新中...' : hasCloud ? 'D1同步' : '刷新缓存'}
+              {isLoading
+                ? '刷新中...'
+                : pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined
+                ? `自动同步(${pendingAutoSyncSeconds}s)`
+                : hasCloud
+                ? 'D1同步'
+                : '刷新缓存'}
             </span>
+            {pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping inline-block md:hidden" />
+            )}
           </button>
 
           {/* Privacy Eye Toggle (防窥按钮) */}
