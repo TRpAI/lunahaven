@@ -1,19 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
-  BatteryCharging,
+  Banknote,
   Calendar,
   Car,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   Clock,
-  Droplets,
-  Edit2,
   Fuel,
   Gauge,
+  Gift,
   Plus,
-  ShieldAlert,
+  Receipt,
+  RotateCcw,
   ShieldCheck,
   TrendingUp,
   Wrench,
@@ -38,7 +37,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenQuickAdd,
   onSelectTab,
 }) => {
-  const { vehicles, fuels, maintenances, settings } = data;
+  const { vehicles, fuels, maintenances, settings, salaries, overtimes, expenses, gifts } = data;
   const hidePrivacy = settings.privacyMaskNumbers;
 
   // 当前选中的车辆
@@ -46,39 +45,150 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     settings.activeVehicleId || (vehicles.length > 0 ? vehicles[0].id : '')
   );
 
-  const currentVehicle: VehicleProfile = useMemo(() => {
-    return (
-      vehicles.find((v) => v.id === selectedVehicleId) ||
-      vehicles[0] || {
-        id: 'v-default',
-        name: '我的座驾',
-        plateNumber: '京A·8899D',
-        fuelType: 'electric',
-        tankCapacity: 100,
-        initialOdometer: 10000,
-        currentOdometer: 24680,
-        maintenanceIntervalKm: 10000,
-        maintenanceIntervalDays: 180,
-        lastMaintenanceDate: '2026-06-15',
-        lastMaintenanceOdometer: 20000,
-        insuranceExpiryDate: '2027-03-20',
-        annualInspectionDate: '2028-06-01',
-        createdAt: new Date().toISOString(),
-      }
-    );
+  // 真实车辆（若已清空则为 null，严禁使用虚假默认数据欺骗用户）
+  const currentVehicle: VehicleProfile | null = useMemo(() => {
+    if (vehicles.length === 0) return null;
+    return vehicles.find((v) => v.id === selectedVehicleId) || vehicles[0];
   }, [vehicles, selectedVehicleId]);
 
   // 该车辆关联的加油与维保记录
   const vehicleFuels = useMemo(() => {
+    if (!currentVehicle) return [];
     return fuels.filter((f) => f.vehicleId === currentVehicle.id);
-  }, [fuels, currentVehicle.id]);
+  }, [fuels, currentVehicle]);
 
   const vehicleMaintenances = useMemo(() => {
+    if (!currentVehicle) return [];
     return maintenances.filter((m) => m.vehicleId === currentVehicle.id);
-  }, [maintenances, currentVehicle.id]);
+  }, [maintenances, currentVehicle]);
+
+  // 当无车辆档案时的全局空状态视图
+  if (!currentVehicle) {
+    const totalSalariesCount = salaries.length;
+    const totalExpensesCount = (expenses || []).length;
+    const totalGiftsCount = gifts.length;
+    const totalOvertimesCount = overtimes.length;
+
+    return (
+      <div className="space-y-6 animate-in fade-in duration-200">
+        {/* 车辆看板未录入 / 已清空提示卡片 */}
+        <div className="p-8 sm:p-12 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs text-center space-y-5">
+          <div className="w-16 h-16 rounded-2xl bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 flex items-center justify-center mx-auto border border-zinc-200/50 dark:border-zinc-700/50">
+            <Car className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-1.5 max-w-md mx-auto">
+            <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+              汽车运行看板（暂无车辆数据）
+            </h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed">
+              账本当前无车辆档案或已完成数据清空。添加爱车档案（燃油车 / 纯电动 / 插混）后，即可开启表显里程监控、加油充电百公里能耗分析及保养到期智能预警。
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              onClick={() => onSelectTab('vehicle')}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>添加第一辆爱车</span>
+            </button>
+
+            <button
+              onClick={onOpenQuickAdd}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-xs font-medium transition-colors cursor-pointer"
+            >
+              <Clock className="w-4 h-4 text-zinc-400" />
+              <span>快捷记一笔</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 账本其他财务模块概览卡片 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div
+            onClick={() => onSelectTab('salary')}
+            className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-all cursor-pointer"
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              <span>薪酬工时记录</span>
+              <Banknote className="w-4 h-4 text-blue-500" />
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 tracking-tight">
+                {totalSalariesCount} <span className="text-xs font-normal text-zinc-400">笔薪资</span>
+              </div>
+              <div className="text-[11px] text-zinc-400 mt-1">
+                包含 {totalOvertimesCount} 条加班工时记录
+              </div>
+            </div>
+          </div>
+
+          <div
+            onClick={() => onSelectTab('expenses')}
+            className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-all cursor-pointer"
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              <span>综合支出记录</span>
+              <Receipt className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 tracking-tight">
+                {totalExpensesCount} <span className="text-xs font-normal text-zinc-400">笔开销</span>
+              </div>
+              <div className="text-[11px] text-zinc-400 mt-1">
+                日常、医疗、教育、人情与旅游专项
+              </div>
+            </div>
+          </div>
+
+          <div
+            onClick={() => onSelectTab('gift')}
+            className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-all cursor-pointer"
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              <span>人情往来随礼</span>
+              <Gift className="w-4 h-4 text-pink-500" />
+            </div>
+            <div className="mt-3">
+              <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 tracking-tight">
+                {totalGiftsCount} <span className="text-xs font-normal text-zinc-400">笔礼单</span>
+              </div>
+              <div className="text-[11px] text-zinc-400 mt-1">
+                礼尚往来备忘与收支核销
+              </div>
+            </div>
+          </div>
+
+          <div
+            onClick={() => onSelectTab('settings')}
+            className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-all cursor-pointer"
+          >
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              <span>数据与安全管理</span>
+              <ShieldCheck className="w-4 h-4 text-zinc-400" />
+            </div>
+            <div className="mt-3">
+              <div className="text-base font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+                系统设置与安全
+              </div>
+              <div className="text-[11px] text-zinc-400 mt-1 flex items-center gap-1">
+                <span>备份导入 / 重置演示数据</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // 最新表显里程
-  const latestFuelOdo = vehicleFuels.length > 0 ? vehicleFuels[0].odometer : currentVehicle.currentOdometer;
+  const latestFuelOdo =
+    vehicleFuels.length > 0
+      ? vehicleFuels[0].odometer
+      : currentVehicle.currentOdometer || currentVehicle.initialOdometer || 0;
   const vehicleHealth = getVehicleHealthStatus(currentVehicle, latestFuelOdo, vehicleMaintenances);
 
   // 1. 本月车辆开支统计
@@ -100,36 +210,49 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // 3. 平均百公里能耗计算
   const fuelsWithEconomy = vehicleFuels.filter((f) => f.calculatedFuelEconomy && f.calculatedFuelEconomy > 0);
-  const avgEconomy = fuelsWithEconomy.length > 0
-    ? (fuelsWithEconomy.reduce((acc, f) => acc + (f.calculatedFuelEconomy || 0), 0) / fuelsWithEconomy.length).toFixed(1)
-    : (currentVehicle.fuelType === 'electric' ? '15.4' : '7.6');
+  const avgEconomy =
+    fuelsWithEconomy.length > 0
+      ? (fuelsWithEconomy.reduce((acc, f) => acc + (f.calculatedFuelEconomy || 0), 0) / fuelsWithEconomy.length).toFixed(1)
+      : null;
 
   // 4. 平均每公里成本
-  const totalTripKm = latestFuelOdo > currentVehicle.initialOdometer
-    ? latestFuelOdo - currentVehicle.initialOdometer
-    : (vehicleFuels.length > 1 ? vehicleFuels[0].odometer - vehicleFuels[vehicleFuels.length - 1].odometer : 1000);
-  const avgCostPerKm = totalTripKm > 0 && totalLifetimeFuelCost > 0
-    ? (totalLifetimeFuelCost / totalTripKm).toFixed(2)
-    : (currentVehicle.fuelType === 'electric' ? '0.16' : '0.68');
+  const totalTripKm =
+    latestFuelOdo > (currentVehicle.initialOdometer || 0)
+      ? latestFuelOdo - (currentVehicle.initialOdometer || 0)
+      : vehicleFuels.length > 1
+      ? Math.max(0, vehicleFuels[0].odometer - vehicleFuels[vehicleFuels.length - 1].odometer)
+      : 0;
+
+  const avgCostPerKm =
+    totalTripKm > 0 && totalLifetimeFuelCost > 0
+      ? (totalLifetimeFuelCost / totalTripKm).toFixed(2)
+      : null;
 
   // 5. 能耗走势图数据 (近 8 次加油/充电记录)
   const fuelTrendData = useMemo(() => {
     return [...vehicleFuels]
+      .filter((f) => typeof f.calculatedFuelEconomy === 'number' && f.calculatedFuelEconomy > 0)
       .slice(0, 8)
       .reverse()
       .map((f) => ({
         label: f.date.slice(5),
-        value: f.calculatedFuelEconomy || (currentVehicle.fuelType === 'electric' ? 15 : 7.5),
+        value: f.calculatedFuelEconomy || 0,
         secondaryValue: f.totalCost,
-        info: `${f.date} | 能耗: ${f.calculatedFuelEconomy || '--'} ${currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}/100km | 花费: ¥${f.totalCost}`,
+        info: `${f.date} | 能耗: ${f.calculatedFuelEconomy} ${
+          currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'
+        }/100km | 实付: ¥${f.totalCost}`,
       }));
   }, [vehicleFuels, currentVehicle.fuelType]);
 
   // 6. 车辆支出构成
   const expenseBreakdown = [
-    { label: currentVehicle.fuelType === 'electric' ? '充电能耗' : '日常燃油', value: totalLifetimeFuelCost, color: '#0ea5e9' },
+    {
+      label: currentVehicle.fuelType === 'electric' ? '充电能耗' : '日常燃油',
+      value: totalLifetimeFuelCost,
+      color: '#0ea5e9',
+    },
     { label: '维保与维修', value: totalLifetimeMaintCost, color: '#f59e0b' },
-  ];
+  ].filter((s) => s.value > 0);
 
   // 7. 车险 & 年检到期预警
   const getDaysUntil = (dateStr?: string) => {
@@ -144,13 +267,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const getFuelTypeLabel = (type: string) => {
     switch (type) {
-      case 'electric': return '纯电动 EV';
-      case 'gasoline_92': return '92# 汽油';
-      case 'gasoline_95': return '95# 汽油';
-      case 'gasoline_98': return '98# 汽油';
-      case 'diesel': return '柴油';
-      case 'hybrid': return '插电混动 PHEV';
-      default: return '燃油车';
+      case 'electric':
+        return '纯电动 EV';
+      case 'gasoline_92':
+        return '92# 汽油';
+      case 'gasoline_95':
+        return '95# 汽油';
+      case 'gasoline_98':
+        return '98# 汽油';
+      case 'diesel':
+        return '柴油';
+      case 'hybrid':
+        return '插电混动 PHEV';
+      default:
+        return '燃油车';
     }
   };
 
@@ -244,13 +374,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Wrench className="w-4 h-4 text-zinc-400" />
           </div>
           <div className="mt-3">
-            <div className={`text-2xl font-bold font-mono tracking-tight flex items-baseline gap-1 ${
-              vehicleHealth.status === 'overdue'
-                ? 'text-rose-600 dark:text-rose-400'
-                : vehicleHealth.status === 'warning'
-                ? 'text-amber-600 dark:text-amber-400'
-                : 'text-zinc-900 dark:text-zinc-100'
-            }`}>
+            <div
+              className={`text-2xl font-bold font-mono tracking-tight flex items-baseline gap-1 ${
+                vehicleHealth.status === 'overdue'
+                  ? 'text-rose-600 dark:text-rose-400'
+                  : vehicleHealth.status === 'warning'
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : 'text-zinc-900 dark:text-zinc-100'
+              }`}
+            >
               <span>{vehicleHealth.remainingKm.toLocaleString()}</span>
               <span className="text-xs font-normal text-zinc-400">km</span>
             </div>
@@ -281,13 +413,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
           <div className="mt-3">
             <div className="text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 tracking-tight flex items-baseline gap-1">
-              <span>{avgEconomy}</span>
+              <span>{avgEconomy !== null ? avgEconomy : '--'}</span>
               <span className="text-xs font-normal text-zinc-400">
                 {currentVehicle.fuelType === 'electric' ? 'kWh/100km' : 'L/100km'}
               </span>
             </div>
             <div className="text-[11px] text-zinc-400 mt-1">
-              约合 <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">¥{avgCostPerKm}</span> / 公里
+              {avgCostPerKm !== null ? (
+                <>
+                  约合 <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">¥{avgCostPerKm}</span> / 公里
+                </>
+              ) : (
+                '暂无连续加油能耗记录'
+              )}
             </div>
           </div>
         </div>
@@ -315,7 +453,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       </div>
 
       {/* 车况提醒与合规卡片 (车险 / 年检 / 维保告警) */}
-      {(vehicleHealth.status !== 'ok' || (insuranceDays !== null && insuranceDays <= 45) || (inspectionDays !== null && inspectionDays <= 60)) && (
+      {(vehicleHealth.status !== 'ok' ||
+        (insuranceDays !== null && insuranceDays <= 45) ||
+        (inspectionDays !== null && inspectionDays <= 60)) && (
         <div className="p-4 rounded-2xl bg-zinc-100 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
           <div className="flex items-start gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
@@ -359,7 +499,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </div>
             <button
               onClick={() => onSelectTab('vehicle')}
-              className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors"
+              className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors cursor-pointer"
             >
               查看全部记录
             </button>
@@ -370,7 +510,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               <LineChart
                 data={fuelTrendData}
                 valueFormatter={(v: number) => `${v}`}
-                primaryLabel={currentVehicle.fuelType === 'electric' ? '电耗 (kWh/100km)' : '油耗 (L/100km)'}
+                primaryLabel={
+                  currentVehicle.fuelType === 'electric'
+                    ? '电耗 (kWh/100km)'
+                    : '油耗 (L/100km)'
+                }
                 secondaryLabel="实付金额 (元)"
                 color="#0ea5e9"
                 secondaryColor="#a1a1aa"
@@ -397,7 +541,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </div>
 
           <div className="my-auto py-4">
-            {totalLifetimeCost > 0 ? (
+            {totalLifetimeCost > 0 && expenseBreakdown.length > 0 ? (
               <DoughnutChart
                 segments={expenseBreakdown}
                 centerTitle={formatCurrency(totalLifetimeCost, hidePrivacy)}
@@ -430,7 +574,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </h3>
             <button
               onClick={() => onSelectTab('vehicle')}
-              className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors"
+              className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors cursor-pointer"
             >
               全部 ({vehicleFuels.length})
             </button>
@@ -444,7 +588,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               >
                 <div>
                   <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                    {f.station || '补能'} · {f.fuelAmount} {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}
+                    {f.station || '补能'} · {f.fuelAmount}{' '}
+                    {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}
                   </div>
                   <div className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-1.5">
                     <span>{f.date}</span>
@@ -452,7 +597,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     <span>{f.odometer.toLocaleString()} km</span>
                     {f.calculatedFuelEconomy && (
                       <span className="font-mono font-medium text-sky-600 dark:text-sky-400">
-                        · {f.calculatedFuelEconomy} {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}/100km
+                        · {f.calculatedFuelEconomy}{' '}
+                        {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}/100km
                       </span>
                     )}
                   </div>
@@ -477,7 +623,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             </h3>
             <button
               onClick={() => onSelectTab('vehicle')}
-              className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors"
+              className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors cursor-pointer"
             >
               全部 ({vehicleMaintenances.length})
             </button>
