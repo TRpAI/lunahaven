@@ -1,4 +1,13 @@
-import { ExpenseRecord, FuelRecord, LedgerFullData, MaintenanceRecord, OvertimeRecord, SalaryRecord, SocialGiftRecord } from '../types';
+import {
+  ExpenseRecord,
+  ExpenseType,
+  FuelRecord,
+  LedgerFullData,
+  MaintenanceRecord,
+  OvertimeRecord,
+  SalaryRecord,
+  SocialGiftRecord,
+} from '../types';
 
 /**
  * 格式化 CSV 字段转义
@@ -94,10 +103,14 @@ export function exportOvertimesToCsv(overtimes: OvertimeRecord[]): string {
 }
 
 /**
- * 导出日常生活与教育支出为 CSV
+ * 导出日常生活、医疗、人情、教育与旅行开销为 CSV
  */
-export function exportExpensesToCsv(expenses: ExpenseRecord[]): string {
-  const headers = ['支出日期', '业务大类', '细分项目', '金额(元)', '出资人员', '支付渠道', '受益对象/关系人', '备注说明'];
+export function exportExpensesToCsv(
+  expenses: ExpenseRecord[],
+  filterType?: ExpenseType
+): string {
+  const targetExpenses = filterType ? expenses.filter((e) => e.type === filterType) : expenses;
+  const headers = ['支出日期', '业务大类', '细分项目', '金额(元)', '出资人员', '支付渠道', '受益对象/关系人/目的地', '备注说明'];
   const typeMap: Record<string, string> = {
     living: '日常生活开销',
     medical: '医疗健康支出',
@@ -106,7 +119,7 @@ export function exportExpensesToCsv(expenses: ExpenseRecord[]): string {
     travel: '旅游度假支出',
   };
 
-  const rows = expenses.map((e) => [
+  const rows = targetExpenses.map((e) => [
     escapeCsv(e.date),
     escapeCsv(typeMap[e.type] || e.type),
     escapeCsv(e.category),

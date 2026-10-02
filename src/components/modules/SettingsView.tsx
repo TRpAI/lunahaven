@@ -1,8 +1,11 @@
 import React, { useRef, useState } from 'react';
 import {
   AlertTriangle,
+  Banknote,
+  Car,
   Check,
   CheckCircle2,
+  Clock,
   Copy,
   Database,
   Download,
@@ -10,22 +13,31 @@ import {
   EyeOff,
   FileCode,
   FileSpreadsheet,
+  FolderDown,
+  Gift,
+  GraduationCap,
+  HeartPulse,
   KeyRound,
   Lock,
   LogOut,
   Moon,
+  Palmtree,
+  Receipt,
   RotateCcw,
   Shield,
   ShieldAlert,
   ShieldCheck,
+  ShoppingBag,
   Smartphone,
   Sun,
   Trash2,
   Upload,
+  Wrench,
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import { generateCloudflareD1SqlDump } from '../../utils/d1Sync';
 import {
+  exportExpensesToCsv,
   exportFuelsToCsv,
   exportGiftsToCsv,
   exportMaintenancesToCsv,
@@ -461,63 +473,258 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </label>
         </div>
 
-        {/* CSV 快速导出 */}
-        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
-          <div className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-2">
-            分模块 CSV 报表导出
+        {/* CSV 分模块专业报表快速导出 */}
+        <div className="pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-3.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+                <span>分模块 CSV 专业报表导出</span>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                按业务模块生成标准 UTF-8 BOM CSV 电子表格，完美兼容 Excel / Numbers
+              </p>
+            </div>
+
+            <button
+              onClick={() => {
+                const dateStr = new Date().toISOString().slice(0, 10);
+                if (fullData.salaries.length > 0) {
+                  triggerFileDownload(exportSalariesToCsv(fullData.salaries), `薪资五险一金明细_${dateStr}.csv`, 'text/csv;charset=utf-8');
+                }
+                if (fullData.overtimes.length > 0) {
+                  triggerFileDownload(exportOvertimesToCsv(fullData.overtimes), `加班工时调休记录_${dateStr}.csv`, 'text/csv;charset=utf-8');
+                }
+                if ((fullData.expenses || []).length > 0) {
+                  triggerFileDownload(exportExpensesToCsv(fullData.expenses || []), `日常与综合开销汇总_${dateStr}.csv`, 'text/csv;charset=utf-8');
+                }
+                if (fullData.fuels.length > 0) {
+                  triggerFileDownload(exportFuelsToCsv(fullData.fuels), `汽车加油充电记录_${dateStr}.csv`, 'text/csv;charset=utf-8');
+                }
+                if (fullData.maintenances.length > 0) {
+                  triggerFileDownload(exportMaintenancesToCsv(fullData.maintenances), `汽车维修保养档案_${dateStr}.csv`, 'text/csv;charset=utf-8');
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-xs font-semibold transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
+              title="一键连续导出全部业务模块 CSV 报表"
+            >
+              <FolderDown className="w-3.5 h-3.5" />
+              <span>批量全部导出</span>
+            </button>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs">
-            <button
-              onClick={() => {
-                const csv = exportSalariesToCsv(fullData.salaries);
-                triggerFileDownload(csv, '薪资五险一金明细.csv', 'text/csv;charset=utf-8');
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors"
-            >
-              工资五险 CSV
-            </button>
-            <button
-              onClick={() => {
-                const csv = exportOvertimesToCsv(fullData.overtimes);
-                triggerFileDownload(csv, '加班调休记录.csv', 'text/csv;charset=utf-8');
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors"
-            >
-              加班工时 CSV
-            </button>
-            <button
-              onClick={() => {
-                const csv = exportGiftsToCsv(fullData.gifts);
-                triggerFileDownload(csv, '人情随礼礼金账本.csv', 'text/csv;charset=utf-8');
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors"
-            >
-              人情往来 CSV
-            </button>
-            <button
-              onClick={() => {
-                const csv = exportFuelsToCsv(fullData.fuels);
-                triggerFileDownload(csv, '汽车加油充电记录.csv', 'text/csv;charset=utf-8');
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors"
-            >
-              加油补能 CSV
-            </button>
-            <button
-              onClick={() => {
-                const csv = exportMaintenancesToCsv(fullData.maintenances);
-                triggerFileDownload(csv, '汽车维修保养记录.csv', 'text/csv;charset=utf-8');
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors"
-            >
-              车辆维保 CSV
-            </button>
-            <button
-              onClick={handleExportD1Sql}
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-zinc-200 dark:border-zinc-700 transition-colors"
-            >
-              Cloudflare D1 SQL 脚本
-            </button>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {/* 1. 薪资与工时 */}
+            <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/70 dark:border-zinc-700/70 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs flex items-center gap-1.5">
+                  <Banknote className="w-3.5 h-3.5 text-blue-500" />
+                  薪资与工时
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {fullData.salaries.length + fullData.overtimes.length} 笔
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => {
+                    const csv = exportSalariesToCsv(fullData.salaries);
+                    triggerFileDownload(csv, `薪资五险一金明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                  }}
+                  className="w-full flex items-center justify-between p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-blue-400 dark:hover:border-blue-500 text-zinc-700 dark:text-zinc-300 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Banknote className="w-3 h-3 text-blue-500 shrink-0" />
+                    薪资五险一金
+                  </span>
+                  <span className="font-mono text-[10px] text-zinc-400 shrink-0">
+                    {fullData.salaries.length} 条
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    const csv = exportOvertimesToCsv(fullData.overtimes);
+                    triggerFileDownload(csv, `加班工时调休明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                  }}
+                  className="w-full flex items-center justify-between p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-blue-400 dark:hover:border-blue-500 text-zinc-700 dark:text-zinc-300 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Clock className="w-3 h-3 text-indigo-500 shrink-0" />
+                    加班工时调休
+                  </span>
+                  <span className="font-mono text-[10px] text-zinc-400 shrink-0">
+                    {fullData.overtimes.length} 条
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* 2. 汽车出行档案 */}
+            <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/70 dark:border-zinc-700/70 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs flex items-center gap-1.5">
+                  <Car className="w-3.5 h-3.5 text-emerald-500" />
+                  汽车出行与维保
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {fullData.fuels.length + fullData.maintenances.length} 笔
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => {
+                    const csv = exportFuelsToCsv(fullData.fuels);
+                    triggerFileDownload(csv, `汽车加油充电明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                  }}
+                  className="w-full flex items-center justify-between p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-emerald-400 dark:hover:border-emerald-500 text-zinc-700 dark:text-zinc-300 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Car className="w-3 h-3 text-emerald-500 shrink-0" />
+                    加油充电补能
+                  </span>
+                  <span className="font-mono text-[10px] text-zinc-400 shrink-0">
+                    {fullData.fuels.length} 条
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    const csv = exportMaintenancesToCsv(fullData.maintenances);
+                    triggerFileDownload(csv, `汽车维修保养明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                  }}
+                  className="w-full flex items-center justify-between p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-emerald-400 dark:hover:border-emerald-500 text-zinc-700 dark:text-zinc-300 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <Wrench className="w-3 h-3 text-teal-500 shrink-0" />
+                    车辆维修保养
+                  </span>
+                  <span className="font-mono text-[10px] text-zinc-400 shrink-0">
+                    {fullData.maintenances.length} 条
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {/* 3. 数据库与开发者 */}
+            <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/70 dark:border-zinc-700/70 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5 text-amber-500" />
+                  数据库脚本
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">SQL Dump</span>
+              </div>
+              <div className="space-y-1.5">
+                <button
+                  onClick={handleExportD1Sql}
+                  className="w-full flex items-center justify-between p-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-amber-400 dark:hover:border-amber-500 text-zinc-700 dark:text-zinc-300 text-xs transition-colors cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5 truncate">
+                    <FileCode className="w-3 h-3 text-amber-500 shrink-0" />
+                    Cloudflare D1 SQL
+                  </span>
+                  <span className="font-mono text-[10px] text-amber-600 dark:text-amber-400 shrink-0">
+                    .sql
+                  </span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 综合开销各子分类报表导出 */}
+          <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/70 dark:border-zinc-700/70 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100 text-xs flex items-center gap-1.5">
+                <Receipt className="w-3.5 h-3.5 text-rose-500" />
+                综合开销与五大支出分类明细报表
+              </span>
+              <span className="text-[10px] text-zinc-400 font-mono">
+                共 {(fullData.expenses || []).length} 笔支出
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <button
+                onClick={() => {
+                  const csv = exportExpensesToCsv(fullData.expenses || []);
+                  triggerFileDownload(csv, `全部综合开销汇总_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-zinc-400 dark:hover:border-zinc-500 text-zinc-800 dark:text-zinc-200 text-xs transition-colors cursor-pointer"
+              >
+                <Receipt className="w-4 h-4 text-emerald-500 mb-1" />
+                <span className="font-medium text-[11px]">全部综合开销</span>
+                <span className="text-[10px] text-zinc-400 font-mono">{(fullData.expenses || []).length} 条</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const csv = exportExpensesToCsv(fullData.expenses || [], 'living');
+                  triggerFileDownload(csv, `日常生活开销明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-blue-400 text-zinc-800 dark:text-zinc-200 text-xs transition-colors cursor-pointer"
+              >
+                <ShoppingBag className="w-4 h-4 text-blue-500 mb-1" />
+                <span className="font-medium text-[11px]">日常生活开销</span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {(fullData.expenses || []).filter((e) => e.type === 'living').length} 条
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const csv = exportExpensesToCsv(fullData.expenses || [], 'medical');
+                  triggerFileDownload(csv, `医疗健康支出明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-rose-400 text-zinc-800 dark:text-zinc-200 text-xs transition-colors cursor-pointer"
+              >
+                <HeartPulse className="w-4 h-4 text-rose-500 mb-1" />
+                <span className="font-medium text-[11px]">医疗健康支出</span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {(fullData.expenses || []).filter((e) => e.type === 'medical').length} 条
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const csv = exportExpensesToCsv(fullData.expenses || [], 'gift');
+                  triggerFileDownload(csv, `人情往来随礼账本_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-pink-400 text-zinc-800 dark:text-zinc-200 text-xs transition-colors cursor-pointer"
+              >
+                <Gift className="w-4 h-4 text-pink-500 mb-1" />
+                <span className="font-medium text-[11px]">人情往来随礼</span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {(fullData.expenses || []).filter((e) => e.type === 'gift').length} 条
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const csv = exportExpensesToCsv(fullData.expenses || [], 'education');
+                  triggerFileDownload(csv, `教育专项支出明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-purple-400 text-zinc-800 dark:text-zinc-200 text-xs transition-colors cursor-pointer"
+              >
+                <GraduationCap className="w-4 h-4 text-purple-500 mb-1" />
+                <span className="font-medium text-[11px]">教育专项支出</span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {(fullData.expenses || []).filter((e) => e.type === 'education').length} 条
+                </span>
+              </button>
+
+              <button
+                onClick={() => {
+                  const csv = exportExpensesToCsv(fullData.expenses || [], 'travel');
+                  triggerFileDownload(csv, `旅游度假支出明细_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8');
+                }}
+                className="flex flex-col items-center justify-center p-2.5 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200/80 dark:border-zinc-700/80 hover:border-amber-400 text-zinc-800 dark:text-zinc-200 text-xs transition-colors cursor-pointer"
+              >
+                <Palmtree className="w-4 h-4 text-amber-500 mb-1" />
+                <span className="font-medium text-[11px]">旅游度假专款</span>
+                <span className="text-[10px] text-zinc-400 font-mono">
+                  {(fullData.expenses || []).filter((e) => e.type === 'travel').length} 条
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
