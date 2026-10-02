@@ -119,6 +119,23 @@ export function validateSyncPayload(payload: any): { valid: boolean; errors: Val
     }
   }
 
+  // 7. 校验综合开销 (Expenses)
+  if (payload.expenses !== undefined) {
+    if (!Array.isArray(payload.expenses)) {
+      errors.push({ field: 'expenses', message: 'expenses 必须为数组' });
+    } else {
+      for (let i = 0; i < payload.expenses.length; i++) {
+        const exp = payload.expenses[i];
+        if (!exp.id || typeof exp.id !== 'string') {
+          errors.push({ field: `expenses[${i}].id`, message: '缺少有效的记录 ID' });
+        }
+        if (!exp.date || typeof exp.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(exp.date)) {
+          errors.push({ field: `expenses[${i}].date`, message: '日期格式必须为 YYYY-MM-DD' });
+        }
+      }
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,

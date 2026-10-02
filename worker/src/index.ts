@@ -66,7 +66,7 @@ export default {
         const since = url.searchParams.get('since');
         const isIncremental = Boolean(since && since.trim());
 
-        let salariesRes, overtimesRes, giftsRes, vehiclesRes, fuelsRes, maintenancesRes, settingsRes, syncMetaRes;
+        let salariesRes, overtimesRes, expensesRes, giftsRes, vehiclesRes, fuelsRes, maintenancesRes, settingsRes, syncMetaRes;
 
         if (isIncremental) {
           // 增量模式：拉取 since 之后变动或软删除的记录
@@ -74,6 +74,7 @@ export default {
           [
             salariesRes,
             overtimesRes,
+            expensesRes,
             giftsRes,
             vehiclesRes,
             fuelsRes,
@@ -83,6 +84,7 @@ export default {
           ] = await Promise.all([
             env.DB.prepare('SELECT * FROM salaries WHERE updated_at > ? ORDER BY updated_at ASC').bind(sinceIso).all(),
             env.DB.prepare('SELECT * FROM overtimes WHERE updated_at > ? ORDER BY updated_at ASC').bind(sinceIso).all(),
+            env.DB.prepare('SELECT * FROM expenses WHERE updated_at > ? ORDER BY updated_at ASC').bind(sinceIso).all(),
             env.DB.prepare('SELECT * FROM social_gifts WHERE updated_at > ? ORDER BY updated_at ASC').bind(sinceIso).all(),
             env.DB.prepare('SELECT * FROM vehicles WHERE updated_at > ? ORDER BY updated_at ASC').bind(sinceIso).all(),
             env.DB.prepare('SELECT * FROM fuel_records WHERE updated_at > ? ORDER BY updated_at ASC').bind(sinceIso).all(),
@@ -95,6 +97,7 @@ export default {
           [
             salariesRes,
             overtimesRes,
+            expensesRes,
             giftsRes,
             vehiclesRes,
             fuelsRes,
@@ -104,6 +107,7 @@ export default {
           ] = await Promise.all([
             env.DB.prepare('SELECT * FROM salaries WHERE deleted_at IS NULL ORDER BY month DESC').all(),
             env.DB.prepare('SELECT * FROM overtimes WHERE deleted_at IS NULL ORDER BY date DESC').all(),
+            env.DB.prepare('SELECT * FROM expenses WHERE deleted_at IS NULL ORDER BY date DESC').all(),
             env.DB.prepare('SELECT * FROM social_gifts WHERE deleted_at IS NULL ORDER BY date DESC').all(),
             env.DB.prepare('SELECT * FROM vehicles WHERE deleted_at IS NULL').all(),
             env.DB.prepare('SELECT * FROM fuel_records WHERE deleted_at IS NULL ORDER BY date DESC').all(),
@@ -116,6 +120,7 @@ export default {
         const totalReturned =
           (salariesRes.results?.length || 0) +
           (overtimesRes.results?.length || 0) +
+          (expensesRes.results?.length || 0) +
           (giftsRes.results?.length || 0) +
           (vehiclesRes.results?.length || 0) +
           (fuelsRes.results?.length || 0) +
@@ -143,6 +148,7 @@ export default {
           {
             salaries: salariesRes.results || [],
             overtimes: overtimesRes.results || [],
+            expenses: expensesRes.results || [],
             gifts: giftsRes.results || [],
             vehicles: vehiclesRes.results || [],
             fuels: fuelsRes.results || [],
@@ -507,7 +513,45 @@ export default {
           }
         }
 
-        // 7. App Settings
+        // 7. Expenses (日常生活与教育/专项开销)
+        if (Array.isArray(payload.expenses)) {
+          for (const exp of payload.expenses) {
+            statements.push(
+              env.DB.prepare(
+                `INSERT INTO expenses (
+                  id, date, type, category, amount, payer, payment_method, beneficiary,
+                  remarks, created_at, updated_at, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(id) DO UPDATE SET
+                  date = excluded.date,
+                  type = excluded.type,
+                  category = excluded.category,
+                  amount = excluded.amount,
+                  payer = excluded.payer,
+                  payment_method = excluded.payment_method,
+                  beneficiary = excluded.beneficiary,
+                  remarks = excluded.remarks,
+                  updated_at = excluded.updated_at,
+                  deleted_at = excluded.deleted_at`
+              ).bind(
+                exp.id,
+                exp.date,
+                exp.type,
+                exp.category,
+                exp.amount ?? 0,
+                exp.payer || exp.payer || '',
+                exp.paymentMethod || exp.payment_method || '',
+                exp.beneficiary || '',
+                exp.remarks || '',
+                exp.createdAt || exp.created_at || nowIso,
+                exp.updatedAt || exp.updated_at || nowIso,
+                exp.deletedAt || exp.deleted_at || null
+              )
+            );
+          }
+        }
+
+        // 8. App Settings
         if (payload.settings) {
           statements.push(
             env.DB.prepare(
@@ -520,7 +564,7 @@ export default {
           );
         }
 
-        // 8. 同步版本元数据推进 (Revision Increment)
+        // 9. 同步版本元数据推进 (Revision Increment)
         statements.push(
           env.DB.prepare(
             `INSERT INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at)

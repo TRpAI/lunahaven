@@ -27,6 +27,7 @@ export interface SyncPayload {
   expectedRevision?: number;
   salaries?: any[];
   overtimes?: any[];
+  expenses?: any[];
   gifts?: any[];
   vehicles?: any[];
   fuels?: any[];
@@ -42,6 +43,7 @@ export interface SyncPayload {
 export interface SyncResponseData {
   salaries: any[];
   overtimes: any[];
+  expenses: any[];
   gifts: any[];
   vehicles: any[];
   fuels: any[];

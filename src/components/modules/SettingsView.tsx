@@ -500,6 +500,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 if ((fullData.expenses || []).length > 0) {
                   triggerFileDownload(exportExpensesToCsv(fullData.expenses || []), `日常与综合开销汇总_${dateStr}.csv`, 'text/csv;charset=utf-8');
                 }
+                if (fullData.gifts.length > 0) {
+                  triggerFileDownload(exportGiftsToCsv(fullData.gifts), `人情往来礼金明细_${dateStr}.csv`, 'text/csv;charset=utf-8');
+                }
                 if (fullData.fuels.length > 0) {
                   triggerFileDownload(exportFuelsToCsv(fullData.fuels), `汽车加油充电记录_${dateStr}.csv`, 'text/csv;charset=utf-8');
                 }
