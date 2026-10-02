@@ -23,6 +23,7 @@ import {
   Moon,
   Palmtree,
   Receipt,
+  RefreshCw,
   RotateCcw,
   Shield,
   ShieldAlert,
@@ -36,6 +37,7 @@ import {
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import { generateCloudflareD1SqlDump } from '../../utils/d1Sync';
+import { forceClearCacheAndReload } from '../../utils/cacheManager';
 import {
   exportExpensesToCsv,
   exportFuelsToCsv,
@@ -737,7 +739,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         onImportFullData={onImportFullData}
       />
 
-      {/* 6. 危险区：数据重置 */}
+      {/* 6. 生产版本与 Service Worker 缓存管理 */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 text-xs">
+        <div>
+          <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+            <RefreshCw className="w-3.5 h-3.5 text-indigo-500" />
+            <span>版本更新与缓存重载</span>
+          </div>
+          <p className="text-zinc-400 mt-0.5">
+            清除浏览器 Service Worker 预缓存与本地静态缓存，强制拉取生产最新构建代码
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+          <button
+            onClick={() => {
+              if (window.confirm('将清理所有离线 Service Worker 静态缓存并强制拉取生产最新版本，确定执行吗？（本地记账数据不会丢失）')) {
+                forceClearCacheAndReload();
+              }
+            }}
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 font-medium transition-colors cursor-pointer w-full sm:w-auto"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>强制清理缓存并更新</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 7. 危险区：数据重置 */}
       <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 text-xs">
         <div>
           <div className="font-semibold text-zinc-900 dark:text-zinc-100">数据管理</div>
