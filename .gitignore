@@ -9,3 +9,6 @@ coverage/
 !.env.example
 .wrangler/
 .turbo/
+bun.lock*
+yarn.lock
+pnpm-lock.yaml
