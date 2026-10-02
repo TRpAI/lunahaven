@@ -4,9 +4,7 @@ import {
   BarChart3,
   Car,
   Cloud,
-  Gift,
   LayoutDashboard,
-  Receipt,
   Settings,
   Shield,
   ShoppingBag,
@@ -19,7 +17,6 @@ interface NavProps {
     salaries: number;
     overtimes: number;
     expenses?: number;
-    gifts: number;
     fuels: number;
   };
 }
@@ -28,8 +25,7 @@ export const Sidebar: React.FC<NavProps> = ({ activeTab, onSelectTab, counts }) 
   const menuItems = [
     { id: 'dashboard', label: '汽车看板', icon: LayoutDashboard, badge: null },
     { id: 'salary', label: '薪资与加班工时', icon: Banknote, badge: (counts.salaries || 0) + (counts.overtimes || 0) },
-    { id: 'expenses', label: '日常、教育与旅行', icon: ShoppingBag, badge: counts.expenses || null },
-    { id: 'gift', label: '人情往来礼金', icon: Gift, badge: counts.gifts },
+    { id: 'expenses', label: '日常开销与综合支出', icon: ShoppingBag, badge: counts.expenses || null },
     { id: 'vehicle', label: '汽车加油与维保', icon: Car, badge: counts.fuels },
     { id: 'analytics', label: '数据图表分析', icon: BarChart3, badge: null },
     { id: 'cloudflare', label: 'Cloudflare D1', icon: Cloud, badge: null },

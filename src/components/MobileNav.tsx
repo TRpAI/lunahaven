@@ -4,7 +4,6 @@ import {
   BarChart3,
   Car,
   Cloud,
-  Gift,
   LayoutDashboard,
   MoreHorizontal,
   Settings,
@@ -23,13 +22,12 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onSelectTab }) 
   const mainTabs = [
     { id: 'dashboard', label: '汽车看板', icon: LayoutDashboard },
     { id: 'salary', label: '薪资工时', icon: Banknote },
-    { id: 'expenses', label: '开销旅行', icon: ShoppingBag },
-    { id: 'gift', label: '人情往来', icon: Gift },
+    { id: 'expenses', label: '日常开销', icon: ShoppingBag },
     { id: 'vehicle', label: '汽车明细', icon: Car },
   ];
 
   const moreTabs = [
-    { id: 'analytics', label: '可视化图表分析', icon: BarChart3, desc: '收入走势 / 能耗对比 / 人情差额' },
+    { id: 'analytics', label: '可视化图表分析', icon: BarChart3, desc: '收入走势 / 综合开支 / 车辆能耗' },
     { id: 'cloudflare', label: 'Cloudflare D1 同步', icon: Cloud, desc: 'D1 架构 / SQL 备份与 Workers' },
     { id: 'settings', label: '系统设置与隐私备份', icon: Settings, desc: '单用户密码 / 冷备份导出 / 恢复' },
   ];

@@ -13,7 +13,7 @@ import {
 interface QuickAddModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSelectAction: (type: 'salary' | 'overtime' | 'expense' | 'gift' | 'fuel' | 'maintenance') => void;
+  onSelectAction: (type: 'salary' | 'overtime' | 'expense' | 'fuel' | 'maintenance') => void;
 }
 
 export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, onSelectAction }) => {
@@ -40,13 +40,6 @@ export const QuickAddModal: React.FC<QuickAddModalProps> = ({ isOpen, onClose, o
       subtitle: '餐饮日用、门诊就医、随礼人情、培优旅游',
       icon: ShoppingBag,
       tag: '开销',
-    },
-    {
-      type: 'gift' as const,
-      title: '记录人情随礼',
-      subtitle: '结婚、满月、乔迁、红包送出与收礼回礼',
-      icon: Gift,
-      tag: '人情',
     },
     {
       type: 'fuel' as const,
