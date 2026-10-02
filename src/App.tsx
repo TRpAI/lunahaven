@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Footer } from './components/Footer';
 import { MobileNav } from './components/MobileNav';
 import { AnalyticsView } from './components/modules/AnalyticsView';
 import { CloudflareD1View } from './components/modules/CloudflareD1View';
@@ -234,9 +233,6 @@ export default function App() {
           )}
         </main>
       </div>
-
-      {/* 底部生态与技术栈品牌标识 */}
-      <Footer onSelectTab={setActiveTab} />
 
       {/* 移动端底部导航 */}
       <MobileNav activeTab={activeTab} onSelectTab={setActiveTab} />
