@@ -15,22 +15,30 @@ export default {
 
     const url = new URL(request.url);
 
-    // 自动检测并初始化表结构 (零配置自愈)
-    await ensureD1Schema(env.DB);
-
     // 2. 生产级健康检查接口 (GET /api/health)
     // 同时探测 Worker 运行状态与 D1 数据库连接可用性
     if (url.pathname === '/api/health') {
+      if (!env.DB) {
+        return createErrorResponse(
+          503,
+          'DATABASE_NOT_BOUND',
+          "Cloudflare Worker 未绑定 D1 数据库变量 (env.DB is undefined)。请在 Cloudflare 仪表盘 Worker -> Settings -> Bindings 中添加 D1 数据库绑定，Variable name 必须设置为 'DB'",
+          requestId,
+          corsHeaders,
+          { worker: 'ok', database: 'unbound' }
+        );
+      }
+
       try {
         let meta = await env.DB.prepare(
           "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
-        ).first();
+        ).first().catch(() => null);
 
         if (!meta) {
           await ensureD1Schema(env.DB);
           meta = await env.DB.prepare(
             "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
-          ).first();
+          ).first().catch(() => null);
         }
 
         return createSuccessResponse(
@@ -51,7 +59,7 @@ export default {
         return createErrorResponse(
           503,
           'DATABASE_UNHEALTHY',
-          'D1 数据库连接异常或未执行 migrations 初始化迁移',
+          `D1 数据库连接异常: ${err?.message || err}`,
           requestId,
           corsHeaders,
           { worker: 'ok', database: 'disconnected' }
@@ -71,7 +79,20 @@ export default {
       );
     }
 
+    // 验证 D1 数据库绑定
+    if (!env.DB) {
+      return createErrorResponse(
+        503,
+        'DATABASE_NOT_BOUND',
+        "Worker 未绑定 D1 数据库变量 (env.DB is undefined)。请在 Cloudflare 仪表盘 Worker -> Settings -> Bindings 中添加 D1 数据库绑定，Variable name 必须设置为 'DB'",
+        requestId,
+        corsHeaders
+      );
+    }
+
     try {
+      // 自动确保 D1 表结构已就绪 (自愈机制)
+      await ensureD1Schema(env.DB);
       // 3.1 手动一键初始化/修复表结构端点 (POST /api/init)
       if (request.method === 'POST' && url.pathname === '/api/init') {
         const ok = await ensureD1Schema(env.DB);
@@ -562,7 +583,7 @@ export default {
                 exp.type,
                 exp.category,
                 exp.amount ?? 0,
-                exp.payer || exp.payer || '',
+                exp.payer || '',
                 exp.paymentMethod || exp.payment_method || '',
                 exp.beneficiary || '',
                 exp.remarks || '',

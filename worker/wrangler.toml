@@ -12,5 +12,5 @@ database_id = "3652e1ff-356f-451e-b47b-ab4bdca3dad5"
 # 生产环境 API 访问 Token 建议通过命令行加密存储：
 # wrangler secret put API_TOKEN
 [vars]
-# 允许跨域的前端来源，例如: https://ledger.yourdomain.com
-ALLOWED_ORIGIN = "https://qiyuezb.pages.dev"
+# 允许跨域的前端来源。设为 "*" 可允许任意合法来源（依赖 API_TOKEN 严格鉴权），亦可指定如 "https://qiyuezb.pages.dev"
+ALLOWED_ORIGIN = "*"

@@ -137,7 +137,10 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   };
 
   const handlePullFromCloud = async () => {
-    if (!workerUrlInput) {
+    const url = (workerUrlInput || d1Config.workerUrl || '').trim();
+    const token = (apiTokenInput || d1Config.apiToken || '').trim();
+
+    if (!url) {
       alert('请先配置 Cloudflare Worker API 地址');
       return;
     }
@@ -148,8 +151,19 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     setPullLoading(true);
     setPullMsg(null);
     try {
-      const res = await pullFromCloudflareWorker(workerUrlInput, apiTokenInput);
+      const res = await pullFromCloudflareWorker(url, token);
       const pulled = res.data;
+      const nowStr = new Date().toLocaleString('zh-CN');
+      const updatedSettings = {
+        ...fullData.settings,
+        d1Config: {
+          ...fullData.settings.d1Config,
+          lastSyncTime: nowStr,
+          syncStatus: 'idle' as const,
+          errorMessage: undefined,
+        },
+      };
+
       onImportData({
         ...fullData,
         salaries: (pulled.salaries as any) || fullData.salaries,
@@ -159,6 +173,8 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         vehicles: (pulled.vehicles as any) || fullData.vehicles,
         fuels: (pulled.fuels as any) || fullData.fuels,
         maintenances: (pulled.maintenances as any) || fullData.maintenances,
+        settings: updatedSettings,
+        syncMeta: pulled.syncMeta || fullData.syncMeta,
       });
       setPullMsg(`成功从 Cloudflare D1 拉取并合并数据！(${res.isIncremental ? '增量模式' : '全量模式'})`);
     } catch (err: any) {

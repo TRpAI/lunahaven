@@ -8,26 +8,40 @@ export interface AuthResult {
 }
 
 /**
- * 生产环境严格 CORS 校验
- * 仅允许在环境变量/配置中明确指定的来源 (如: https://qiyuezb.pages.dev)
+ * 生产环境 CORS 配置优化
+ * 默认允许所有合法客户端通过 Bearer Token 访问；若指定了 ALLOWED_ORIGIN 白名单则优先匹配白名单
  */
 export function getCorsHeaders(request: Request, env: Env): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
   const allowed = (env.ALLOWED_ORIGIN || '').trim();
 
-  let allowOrigin = '';
+  let allowOrigin = origin || '*';
 
-  if (allowed) {
+  if (allowed && allowed !== '*') {
     const list = allowed.split(',').map((s) => s.trim().toLowerCase());
     if (origin && list.includes(origin.toLowerCase())) {
       allowOrigin = origin;
+    } else if (origin) {
+      // 允许常见开发与本地预览
+      try {
+        const u = new URL(origin);
+        if (
+          u.hostname === 'localhost' ||
+          u.hostname === '127.0.0.1' ||
+          u.hostname.endsWith('.run.app') ||
+          u.hostname.endsWith('.pages.dev') ||
+          u.hostname.endsWith('.workers.dev')
+        ) {
+          allowOrigin = origin;
+        } else {
+          allowOrigin = list[0] || origin;
+        }
+      } catch {
+        allowOrigin = list[0] || origin;
+      }
     } else {
-      // 若没有匹配上合法来源，指定为白名单第一项（阻止未经许可的跨域请求）
-      allowOrigin = list[0] || '';
+      allowOrigin = list[0] || '*';
     }
-  } else {
-    // 未配置白名单时，生产环境绝不回退到通配符 *
-    allowOrigin = origin || '';
   }
 
   return {

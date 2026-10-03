@@ -586,7 +586,17 @@ export async function pullFromCloudflareWorker(
         odometer: m.odometer,
         category: m.category,
         title: m.title,
-        items: typeof m.items_json === 'string' ? JSON.parse(m.items_json || '[]') : [],
+        items: (() => {
+          if (Array.isArray(m.items)) return m.items;
+          if (typeof m.items_json === 'string') {
+            try {
+              return JSON.parse(m.items_json);
+            } catch {
+              return [];
+            }
+          }
+          return [];
+        })(),
         shopName: m.shop_name,
         partsCost: m.parts_cost,
         laborCost: m.labor_cost,
