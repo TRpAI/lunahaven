@@ -481,23 +481,23 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="min-w-0">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">车牌号码</label>
                     <input
                       type="text"
                       placeholder="如: 京A·8899D"
                       value={vehicleForm.plateNumber}
                       onChange={(e) => setVehicleForm({ ...vehicleForm, plateNumber: e.target.value })}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">能源类型</label>
                     <select
                       value={vehicleForm.fuelType}
                       onChange={(e) => setVehicleForm({ ...vehicleForm, fuelType: e.target.value as VehicleFuelType })}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                     >
                       <option value="electric">纯电动 (kWh)</option>
                       <option value="gasoline_92">92# 汽油</option>
@@ -509,8 +509,8 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="min-w-0">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
                       {vehicleForm.fuelType === 'electric' ? '电池容量 (kWh)' : '油箱容积 (L)'}
                     </label>
@@ -518,16 +518,16 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                       type="number"
                       value={vehicleForm.tankCapacity}
                       onChange={(e) => setVehicleForm({ ...vehicleForm, tankCapacity: parseFloat(e.target.value) || 50 })}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">初始里程 (km)</label>
                     <input
                       type="number"
                       value={vehicleForm.initialOdometer}
                       onChange={(e) => setVehicleForm({ ...vehicleForm, initialOdometer: parseFloat(e.target.value) || 0 })}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                     />
                   </div>
                 </div>
@@ -960,9 +960,9 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
       {/* 加油/充电 Modal */}
       {isFuelModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-3 sm:p-4 overflow-y-auto pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Fuel className="w-5 h-5 text-zinc-500" />
                 <span>{editingFuelId ? '编辑补能记录' : '记一笔补能'}</span>
@@ -975,32 +975,33 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveFuel} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+            <form onSubmit={handleSaveFuel} className="space-y-3.5 flex-1">
+              {/* 补能日期与当前里程 (响应式栅格，规避 iOS 日期组件宽度溢出产生重叠) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">补能日期</label>
                   <input
                     type="date"
                     required
                     value={fuelForm.date}
                     onChange={(e) => setFuelForm({ ...fuelForm, date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">当前表显里程 (km)</label>
                   <input
                     type="number"
                     required
                     value={fuelForm.odometer}
                     onChange={(e) => setFuelForm({ ...fuelForm, odometer: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
                     {currentVehicle.fuelType === 'electric' ? '充电量 (kWh)' : '加油升数 (L)'}
                   </label>
@@ -1017,11 +1018,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                         totalCost: Number((amt * fuelForm.unitPrice).toFixed(2)),
                       });
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
                     {currentVehicle.fuelType === 'electric' ? '电价 (元/度)' : '油价 (元/L)'}
                   </label>
@@ -1038,11 +1039,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                         totalCost: Number((fuelForm.fuelAmount * price).toFixed(2)),
                       });
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">实付总金额 (元)</label>
                   <input
                     type="number"
@@ -1050,23 +1051,23 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     required
                     value={fuelForm.totalCost}
                     onChange={(e) => setFuelForm({ ...fuelForm, totalCost: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">站点名称</label>
                   <input
                     type="text"
                     placeholder="如: 特来电 / 中国石化"
                     value={fuelForm.station}
                     onChange={(e) => setFuelForm({ ...fuelForm, station: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
                       补能标号类型
@@ -1219,11 +1220,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
         </div>
       )}
 
-      {/* 维保 Modal */}
+      {/* 维修保养 Modal */}
       {isMaintModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-3 sm:p-4 overflow-y-auto pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Wrench className="w-5 h-5 text-zinc-500" />
                 <span>{editingMaintId ? '编辑维保记录' : '记一笔维保'}</span>
@@ -1236,24 +1237,24 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSaveMaint} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+            <form onSubmit={handleSaveMaint} className="space-y-3.5 flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">维保日期</label>
                   <input
                     type="date"
                     required
                     value={maintForm.date}
                     onChange={(e) => setMaintForm({ ...maintForm, date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">维保分类</label>
                   <select
                     value={maintForm.category}
                     onChange={(e) => setMaintForm({ ...maintForm, category: e.target.value as MaintenanceCategory })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   >
                     {Object.entries(categoryLabels).map(([cat, label]) => (
                       <option key={cat} value={cat}>{label}</option>
@@ -1262,8 +1263,8 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">项目标题</label>
                   <input
                     type="text"
@@ -1271,17 +1272,17 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     placeholder="如: 4万公里常规保养"
                     value={maintForm.title}
                     onChange={(e) => setMaintForm({ ...maintForm, title: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">表显里程 (km)</label>
                   <input
                     type="number"
                     required
                     value={maintForm.odometer}
                     onChange={(e) => setMaintForm({ ...maintForm, odometer: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
               </div>
@@ -1297,8 +1298,8 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">配件费用 (元)</label>
                   <input
                     type="number"
@@ -1312,10 +1313,10 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                         totalCost: Number((parts + maintForm.laborCost).toFixed(2)),
                       });
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">工时费用 (元)</label>
                   <input
                     type="number"
@@ -1329,10 +1330,10 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                         totalCost: Number((maintForm.partsCost + labor).toFixed(2)),
                       });
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">实付总计 (元)</label>
                   <input
                     type="number"
@@ -1340,30 +1341,30 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     required
                     value={maintForm.totalCost}
                     onChange={(e) => setMaintForm({ ...maintForm, totalCost: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">服务门店/4S店</label>
                   <input
                     type="text"
                     placeholder="如: 途虎养车 / 特斯拉服务中心"
                     value={maintForm.shopName}
                     onChange={(e) => setMaintForm({ ...maintForm, shopName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">下次建议里程 (km)</label>
                   <input
                     type="number"
                     placeholder="如: 30000"
                     value={maintForm.nextServiceOdometer || ''}
                     onChange={(e) => setMaintForm({ ...maintForm, nextServiceOdometer: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
               </div>

@@ -783,91 +783,91 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
 
       {/* 录入 / 编辑薪资 Modal */}
       {isSalaryModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Banknote className="w-5 h-5 text-blue-500" />
                 <span>{editingSalaryId ? '编辑薪资记录' : '录入薪资工资条'}</span>
               </h3>
               <button
                 onClick={() => setIsSalaryModalOpen(false)}
-                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveSalarySubmit} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+            <form onSubmit={handleSaveSalarySubmit} className="space-y-3.5 flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">薪酬月份</label>
                   <input
                     type="month"
                     required
                     value={salaryForm.month}
                     onChange={(e) => setSalaryForm({ ...salaryForm, month: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">公司/单位名称</label>
                   <input
                     type="text"
                     value={salaryForm.companyName}
                     onChange={(e) => setSalaryForm({ ...salaryForm, companyName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">基本工资</label>
                   <input
                     type="number"
                     value={salaryForm.baseSalary}
                     onChange={(e) => setSalaryForm({ ...salaryForm, baseSalary: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">绩效/奖金</label>
                   <input
                     type="number"
                     value={salaryForm.performancePay}
                     onChange={(e) => setSalaryForm({ ...salaryForm, performancePay: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">加班费</label>
                   <input
                     type="number"
                     value={salaryForm.overtimePay}
                     onChange={(e) => setSalaryForm({ ...salaryForm, overtimePay: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">津补贴</label>
                   <input
                     type="number"
                     value={salaryForm.allowance}
                     onChange={(e) => setSalaryForm({ ...salaryForm, allowance: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">专项附加扣除 (赡养/子女/住房)</label>
                   <input
                     type="number"
                     value={salaryForm.specialDeductions}
                     onChange={(e) => setSalaryForm({ ...salaryForm, specialDeductions: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
               </div>
@@ -925,34 +925,34 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
 
       {/* 录入 / 编辑加班 Modal */}
       {isOvertimeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] animate-in fade-in duration-150">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Clock className="w-5 h-5 text-amber-500" />
                 <span>{editingOvertimeId ? '编辑加班记录' : '记录加班工时'}</span>
               </h3>
               <button
                 onClick={() => setIsOvertimeModalOpen(false)}
-                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200"
+                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveOvertimeSubmit} className="space-y-3.5">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+            <form onSubmit={handleSaveOvertimeSubmit} className="space-y-3.5 flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">加班日期</label>
                   <input
                     type="date"
                     required
                     value={overtimeForm.date}
                     onChange={(e) => setOvertimeForm({ ...overtimeForm, date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">加班类型</label>
                   <select
                     value={overtimeForm.type}
@@ -961,7 +961,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                       const mult = t === 'workday' ? 1.5 : t === 'weekend' ? 2.0 : 3.0;
                       setOvertimeForm({ ...overtimeForm, type: t, multiplier: mult });
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   >
                     <option value="workday">工作日延时 (1.5x)</option>
                     <option value="weekend">周末加班 (2.0x)</option>
@@ -972,8 +972,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
 
               {/* 开始与结束时间 (由开始时间和结束时间自动计算工时) */}
               <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="min-w-0">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
                       开始时间
                     </label>
@@ -990,10 +990,10 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                           durationHours: details.hours,
                         });
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
                       结束时间
                     </label>
@@ -1010,7 +1010,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                           durationHours: details.hours,
                         });
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                     />
                   </div>
                 </div>
@@ -1075,8 +1075,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
               </div>
 
               {/* 加班时长 (自动计算，支持手动微调) 与结算方式 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
                       加班工时 (小时)
@@ -1094,7 +1094,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     onChange={(e) =>
                       setOvertimeForm({ ...overtimeForm, durationHours: Number(e.target.value) })
                     }
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-sm"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-sm"
                   />
                   <div className="flex flex-wrap gap-1 mt-1.5">
                     <button
@@ -1142,7 +1142,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     </button>
                   </div>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
                     结算方式
                   </label>
@@ -1151,7 +1151,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     onChange={(e) =>
                       setOvertimeForm({ ...overtimeForm, settlementType: e.target.value as any })
                     }
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   >
                     <option value="paid">发放加班费</option>
                     <option value="comp_time">计入调休池</option>

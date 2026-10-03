@@ -885,10 +885,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
       {/* 录入/编辑 开销模态弹窗 */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl overflow-hidden animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)] animate-in fade-in duration-150">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl overflow-hidden my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] flex flex-col animate-in zoom-in-95 duration-150">
             {/* Modal Header */}
-            <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-200 dark:border-zinc-800 shrink-0">
               <div className="flex items-center gap-2">
                 <div
                   className={`p-2 rounded-xl ${
@@ -941,7 +941,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </div>
 
             {/* Modal Form */}
-            <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs">
+            <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs overflow-y-auto flex-1">
               {/* 五大支出性质大类切换 */}
               <div>
                 <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1.5">
@@ -1091,9 +1091,9 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
               )}
 
-              {/* 日期与金额 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              {/* 日期与金额 (响应式单列/双列布局，添加 min-w-0 与 block 规避 iOS 日期组件固有宽度溢出) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
                     {formData.type === 'gift' && formData.direction === 'in' ? '收礼日期' : '支出日期'}
                   </label>
@@ -1102,11 +1102,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     required
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden"
                   />
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
                     {formData.type === 'gift' && formData.direction === 'in' ? '收礼金额 (元)' : '支出金额 (元)'}
                   </label>
@@ -1118,7 +1118,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                     placeholder="0.00"
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: e.target.value === '' ? '' : parseFloat(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-sm focus:outline-hidden"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-sm focus:outline-hidden"
                   />
                 </div>
               </div>

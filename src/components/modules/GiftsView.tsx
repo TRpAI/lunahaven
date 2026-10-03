@@ -407,9 +407,9 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
 
       {/* 模态框：录入/编辑人情 */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-3 sm:p-4 overflow-y-auto pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Gift className="w-5 h-5 text-zinc-500" />
                 <span>{editingId ? '编辑随礼记录' : '记一笔人情随礼'}</span>
@@ -422,21 +422,21 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-3.5">
+            <form onSubmit={handleSubmit} className="space-y-3.5 flex-1">
               {/* 方向与金额 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">随礼方向</label>
                   <select
                     value={formData.direction}
                     onChange={(e) => setFormData({ ...formData, direction: e.target.value as GiftDirection })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
                   >
                     <option value="out">送出礼金 (我的支出)</option>
                     <option value="in">收到礼金 (我的收入)</option>
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">礼金金额 (元)</label>
                   <input
                     type="number"
@@ -444,14 +444,14 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                     required
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
                   />
                 </div>
               </div>
 
               {/* 姓名与日期 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
                       {formData.direction === 'in' ? '送礼人 / 关系对象' : '随礼对象 / 关系人'}
@@ -474,7 +474,7 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                           setFormData({ ...formData, personName: val });
                         }
                       }}
-                      className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-xs font-medium cursor-pointer"
+                      className="w-full min-w-0 block px-2.5 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-xs font-medium cursor-pointer"
                     >
                       <option value="">
                         {formData.direction === 'in' ? '-- 下拉选择送礼人/关系人 --' : '-- 下拉选择随礼对象/关系人 --'}
@@ -504,30 +504,30 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                       placeholder="或输入具体姓名/如: 李雷 / 王叔..."
                       value={formData.personName}
                       onChange={(e) => setFormData({ ...formData, personName: e.target.value })}
-                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                      className="w-full min-w-0 block px-3 py-1.5 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                     />
                   </div>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">发生日期</label>
                   <input
                     type="date"
                     required
                     value={formData.date}
                     onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
               </div>
 
               {/* 关系与事由 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">社交关系</label>
                   <select
                     value={formData.relation}
                     onChange={(e) => setFormData({ ...formData, relation: e.target.value as GiftRelation })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   >
                     {Object.entries(relationLabels).map(([k, v]) => (
                       <option key={k} value={k}>
@@ -536,12 +536,12 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                     ))}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">事由场合</label>
                   <select
                     value={formData.eventType}
                     onChange={(e) => setFormData({ ...formData, eventType: e.target.value as GiftOccasion })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   >
                     {Object.entries(eventLabels).map(([k, v]) => (
                       <option key={k} value={k}>
@@ -554,13 +554,13 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
 
               {/* 回礼状态 (若为收到) */}
               {formData.direction === 'in' && (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="min-w-0">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">回礼跟进状态</label>
                     <select
                       value={formData.returnStatus}
                       onChange={(e) => setFormData({ ...formData, returnStatus: e.target.value as ReturnStatus })}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                     >
                       <option value="pending">待回礼 (需择机回礼)</option>
                       <option value="returned">已回礼</option>

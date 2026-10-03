@@ -1,3 +1,85 @@
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+
+/* iOS PWA Safe Area Insets & Status Bar Support */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+/* 顶部安全区域内边距 (适配 iPhone 刘海、灵动岛与状态栏) */
+.safe-top-padding {
+  padding-top: max(env(safe-area-inset-top, 0px), 0px);
+}
+
+/* 底部安全区域内边距 (适配 iPhone 底部黑条 Home Bar) */
+.safe-bottom-padding {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0px);
+}
+
+/* 针对 iOS PWA 安装到手机桌面后独立模式下的顶部状态栏防重叠保障 */
+@supports (-webkit-touch-callout: none) {
+  @media all and (display-mode: standalone) {
+    .ios-header-safe-top {
+      padding-top: max(3.25rem, calc(0.625rem + env(safe-area-inset-top, 0px))) !important;
+    }
+  }
+}
+
+/* 解决 iOS WebKit / Safari 下 date / time / month 控件尺寸崩溃、溢出、高度塌陷与栅格重叠问题 */
+input[type="date"],
+input[type="time"],
+input[type="month"],
+input[type="datetime-local"] {
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  appearance: none !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  line-height: 1.25 !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  overflow: hidden !important;
+  vertical-align: middle !important;
+}
+
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value,
+input[type="month"]::-webkit-date-and-time-value,
+input[type="datetime-local"]::-webkit-date-and-time-value {
+  text-align: left !important;
+  min-height: 1.5em !important;
+  height: 1.5em !important;
+  line-height: 1.5em !important;
+  display: flex !important;
+  align-items: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* 优化日历/时间选择图标在 iOS Safari / WebKit 下的交互与深色模式适配 */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.65;
+  padding: 0;
+  margin: 0;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator,
+.dark input[type="time"]::-webkit-calendar-picker-indicator,
+.dark input[type="month"]::-webkit-calendar-picker-indicator,
+.dark input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  opacity: 0.75;
+}

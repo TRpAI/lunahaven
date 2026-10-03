@@ -159,7 +159,7 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 transition-all duration-300">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] transition-all duration-300">
       <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl p-7 shadow-2xl border border-zinc-200 dark:border-zinc-800 text-center animate-in fade-in zoom-in-95 duration-200">
         {/* Lock Icon */}
         <div className="mx-auto w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-900 dark:text-zinc-100 mb-4 border border-zinc-200/60 dark:border-zinc-700/60">

@@ -48,6 +48,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   const hasCloud = Boolean(settings.d1Config?.workerUrl);
   const isLoading = isSyncing || localSpinning;
 
+  // 检测是否处于 iOS PWA 独立安装桌面环境或全屏 Standalone 模式 (规避状态栏与网页顶部重叠)
+  const isStandalone = typeof window !== 'undefined' && (
+    Boolean((window.navigator as any).standalone) ||
+    (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+    (window.matchMedia && window.matchMedia('(display-mode: fullscreen)').matches)
+  );
+
   const showToast = (text: string, isError = false) => {
     setToastMsg({ text, isError });
     setTimeout(() => {
@@ -83,7 +90,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 sm:px-4 lg:px-6 py-2.5 transition-colors relative">
+    <header
+      className="sticky top-0 z-30 w-full bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-b border-zinc-200/80 dark:border-zinc-800/80 px-3 sm:px-4 lg:px-6 transition-colors relative ios-header-safe-top"
+      style={{
+        paddingTop: isStandalone
+          ? 'max(calc(0.625rem + env(safe-area-inset-top, 0px)), 3.25rem)'
+          : 'max(0.625rem, calc(0.625rem + env(safe-area-inset-top, 0px)))',
+        paddingBottom: '0.625rem',
+      }}
+    >
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
         {/* Brand (移动端窄屏仅显示精美图标，宽屏显示完整品牌名) */}
         <div

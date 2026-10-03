@@ -149,7 +149,10 @@ export default function App() {
         />
 
         {/* 主内容区域 */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 pb-24 lg:pb-8 max-w-full overflow-x-hidden">
+        <main
+          className="flex-1 p-4 sm:p-6 lg:p-8 max-w-full overflow-x-hidden"
+          style={{ paddingBottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}
+        >
           {activeTab === 'dashboard' && (
             <DashboardView
               data={data}

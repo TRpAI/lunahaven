@@ -89,7 +89,10 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onSelectTab }) 
       )}
 
       {/* 底部固定导航栏 */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/90 dark:bg-zinc-950/90 backdrop-blur-md border-t border-zinc-200/80 dark:border-zinc-800/80 px-2 py-1.5 safe-area-bottom">
+      <nav
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md border-t border-zinc-200/80 dark:border-zinc-800/80 px-2 pt-1.5 transition-colors"
+        style={{ paddingBottom: 'calc(0.375rem + env(safe-area-inset-bottom, 0px))' }}
+      >
         <div className="flex items-center justify-around max-w-lg mx-auto">
           {mainTabs.map((tab) => {
             const Icon = tab.icon;
