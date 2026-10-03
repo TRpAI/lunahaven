@@ -433,13 +433,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5 shrink-0">
                 <Fingerprint className="w-4 h-4 text-indigo-500" />
-                <span>生物识别身份验证 (Touch ID / Face ID / 指纹)</span>
+                <span>生物识别身份验证</span>
               </h3>
               <span
-                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center shrink-0 ${
                   isBiometricActive
                     ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60'
                     : !isBiometricSupported
