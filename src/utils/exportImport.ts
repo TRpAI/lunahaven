@@ -183,7 +183,7 @@ export function exportGiftsToCsv(gifts: SocialGiftRecord[]): string {
  * 导出汽车加油为 CSV
  */
 export function exportFuelsToCsv(fuels: FuelRecord[]): string {
-  const headers = ['日期', '表显里程(km)', '加油/充电量', '单价(元)', '总费用(元)', '是否加满', '站点品牌', '油品类型', '百公里油耗', '每公里费用', '备注'];
+  const headers = ['日期', '表显里程(km)', '加油/充电量', '单价(元)', '总费用(元)', '是否加满/充满', '是否亮灯/低电', '遗漏补能', '站点品牌', '油品类型', '百公里油耗/电耗', '每公里费用', '备注'];
 
   const rows = fuels.map((f) => [
     escapeCsv(f.date),
@@ -191,7 +191,9 @@ export function exportFuelsToCsv(fuels: FuelRecord[]): string {
     escapeCsv(f.fuelAmount),
     escapeCsv(f.unitPrice),
     escapeCsv(f.totalCost),
-    escapeCsv(f.isFullTank ? '是' : '否'),
+    escapeCsv(f.isFullTank ? '加满' : '未加满'),
+    escapeCsv(f.isWarningLightOn ? '是' : '否'),
+    escapeCsv(f.isMissedPrevious ? '是' : '否'),
     escapeCsv(f.station),
     escapeCsv(f.fuelType),
     escapeCsv(f.calculatedFuelEconomy ? f.calculatedFuelEconomy + ' L/100km' : '-'),

@@ -24,6 +24,16 @@ export function processFuelRecords(records: FuelRecord[]): FuelRecord[] {
       current.tripDistance = 0;
     }
 
+    if (current.isMissedPrevious) {
+      // 若用户标记遗漏了上一次补能记录，则断开前序关联，重新开始标定基准
+      current.calculatedFuelEconomy = undefined;
+      current.costPerKm = undefined;
+      accumulatedFuelSinceFull = 0;
+      accumulatedCostSinceFull = 0;
+      lastFullOdometer = current.isFullTank ? current.odometer : null;
+      continue;
+    }
+
     if (current.isFullTank) {
       if (lastFullOdometer !== null) {
         const deltaDistance = current.odometer - lastFullOdometer;

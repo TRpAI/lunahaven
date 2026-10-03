@@ -140,7 +140,9 @@ export interface FuelRecord {
   fuelAmount: number; // 加油升数 (L) 或 充入电量 (kWh)
   unitPrice: number; // 单价 (元/L 或 元/kWh)
   totalCost: number; // 实付总金额
-  isFullTank: boolean; // 是否加满
+  isFullTank: boolean; // 是否加满 / 充满 (跳枪/100%满电)
+  isWarningLightOn?: boolean; // 加油前是否已亮灯 / 低电报警 (油表黄灯/低电提示)
+  isMissedPrevious?: boolean; // 是否遗漏了上一次补能记录 (漏记保护，防止能耗异常)
   station: string; // 加油站 / 充电站品牌
   fuelType: string;
   calculatedFuelEconomy?: number; // 百公里油耗 (L/100km 或 kWh/100km)

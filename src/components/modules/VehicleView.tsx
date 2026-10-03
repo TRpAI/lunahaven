@@ -127,6 +127,8 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     unitPrice: currentVehicle?.fuelType === 'electric' ? 1.35 : 8.35,
     totalCost: currentVehicle?.fuelType === 'electric' ? 67.5 : 334.0,
     isFullTank: true,
+    isWarningLightOn: false,
+    isMissedPrevious: false,
     station: currentVehicle?.fuelType === 'electric' ? '特来电超充站' : '中国石化',
     fuelType: currentVehicle?.fuelType === 'electric' ? '快充直流电 (kWh)' : '95# 汽油',
     notes: '',
@@ -211,6 +213,8 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
       unitPrice: defaultPrice,
       totalCost: Number((defaultAmount * defaultPrice).toFixed(2)),
       isFullTank: true,
+      isWarningLightOn: false,
+      isMissedPrevious: false,
       station: defaultStation,
       fuelType: defaultFuel,
       notes: '',
@@ -226,7 +230,9 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
       fuelAmount: f.fuelAmount,
       unitPrice: f.unitPrice,
       totalCost: f.totalCost,
-      isFullTank: f.isFullTank,
+      isFullTank: f.isFullTank ?? true,
+      isWarningLightOn: Boolean(f.isWarningLightOn),
+      isMissedPrevious: Boolean(f.isMissedPrevious),
       station: f.station || '',
       fuelType: f.fuelType || '',
       notes: f.notes || '',
@@ -389,6 +395,8 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
       unitPrice: Number(fuelForm.unitPrice) || 0,
       totalCost: Number(fuelForm.totalCost) || Number(fuelForm.fuelAmount) * Number(fuelForm.unitPrice),
       isFullTank: fuelForm.isFullTank,
+      isWarningLightOn: fuelForm.isWarningLightOn,
+      isMissedPrevious: fuelForm.isMissedPrevious,
       station: fuelForm.station,
       fuelType: fuelForm.fuelType,
       notes: fuelForm.notes,
@@ -813,9 +821,24 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                                   {f.station}
                                 </span>
                               )}
-                              {f.isFullTank && (
+                              {f.isFullTank ? (
                                 <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50">
-                                  加满
+                                  {isElectric ? '充满' : '加满'}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                                  未加满
+                                </span>
+                              )}
+                              {f.isWarningLightOn && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/50 flex items-center gap-0.5">
+                                  <AlertTriangle className="w-2.5 h-2.5" />
+                                  <span>{isElectric ? '低电' : '亮灯'}</span>
+                                </span>
+                              )}
+                              {f.isMissedPrevious && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200/50">
+                                  漏记
                                 </span>
                               )}
                             </div>
@@ -919,7 +942,29 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     {vehicleFuels.map((f) => (
                       <tr key={f.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
                         <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
-                          {f.date}
+                          <div>{f.date}</div>
+                          <div className="flex items-center gap-1 mt-0.5">
+                            {f.isFullTank ? (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50">
+                                {currentVehicle.fuelType === 'electric' ? '充满' : '加满'}
+                              </span>
+                            ) : (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                                未加满
+                              </span>
+                            )}
+                            {f.isWarningLightOn && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/50 flex items-center gap-0.5">
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                <span>{currentVehicle.fuelType === 'electric' ? '低电' : '亮灯'}</span>
+                              </span>
+                            )}
+                            {f.isMissedPrevious && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
+                                漏记
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
                           {f.odometer.toLocaleString()} km
@@ -1375,6 +1420,74 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+
+              {/* 补能状态选择：加满/充满、油表亮灯、漏记保护 */}
+              <div className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-3">
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-semibold mb-1.5">
+                    {currentVehicle?.fuelType === 'electric' ? '充电状态' : '加油状态'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFuelForm({ ...fuelForm, isFullTank: true })}
+                      className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        fuelForm.isFullTank
+                          ? 'bg-emerald-500 text-white border-emerald-600 shadow-xs'
+                          : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>{currentVehicle?.fuelType === 'electric' ? '充满 (100% 满电)' : '加满 (跳枪)'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFuelForm({ ...fuelForm, isFullTank: false })}
+                      className={`p-2.5 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        !fuelForm.isFullTank
+                          ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent shadow-xs'
+                          : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'
+                      }`}
+                    >
+                      <span>未加满 (部分补能)</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 mt-1">
+                    {fuelForm.isFullTank
+                      ? '💡 连续两次加满即可精确核算该区间真实的百公里油耗/电耗。'
+                      : '💡 未加满时系统将暂不计算本笔单次油耗，待下次加满时合并累积计算。'}
+                  </p>
+                </div>
+
+                {/* 状态复选标签：油表亮灯 / 遗漏上次 */}
+                <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFuelForm({ ...fuelForm, isWarningLightOn: !fuelForm.isWarningLightOn })}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                      fuelForm.isWarningLightOn
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                        : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-amber-400'
+                    }`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{currentVehicle?.fuelType === 'electric' ? '低电告警 (电量<10%)' : '油表黄灯亮 (已亮灯)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFuelForm({ ...fuelForm, isMissedPrevious: !fuelForm.isMissedPrevious })}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-medium flex items-center gap-1.5 transition-all cursor-pointer ${
+                      fuelForm.isMissedPrevious
+                        ? 'bg-rose-500 text-white border-rose-600 shadow-xs'
+                        : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:border-rose-400'
+                    }`}
+                    title="若中间有一次借车或忘记记账，开启后重新作为起始点计算能耗"
+                  >
+                    <span>遗漏上次记录</span>
+                  </button>
                 </div>
               </div>
 
