@@ -639,12 +639,12 @@ export default {
 
       return createErrorResponse(404, 'NOT_FOUND', '请求的 API 路由端点不存在', requestId, corsHeaders);
     } catch (err: any) {
-      // 生产安全：记录详细错误至 Worker 服务端日志，避免对公网泄露数据库敏感细节
       console.error(`[${requestId}] Worker Internal Error:`, err);
+      const detail = err?.message || String(err);
       return createErrorResponse(
         500,
         'DATABASE_ERROR',
-        '数据库操作异常，请确保已执行 wrangler d1 migrations apply 迁移',
+        `数据库操作异常: ${detail}`,
         requestId,
         corsHeaders
       );

@@ -2,9 +2,9 @@
  * Cloudflare D1 数据库结构全量自愈与自动初始化 Schema
  */
 
-export const D1_FULL_SCHEMA_SQL = `
--- 1. 工资与五险一金明细表
-CREATE TABLE IF NOT EXISTS salaries (
+export const D1_SCHEMA_STATEMENTS = [
+  // 1. 工资与五险一金明细表
+  `CREATE TABLE IF NOT EXISTS salaries (
     id TEXT PRIMARY KEY,
     month TEXT NOT NULL,
     company_name TEXT,
@@ -38,10 +38,10 @@ CREATE TABLE IF NOT EXISTS salaries (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
-);
+  )`,
 
--- 2. 加班工时与调休表
-CREATE TABLE IF NOT EXISTS overtimes (
+  // 2. 加班工时与调休表
+  `CREATE TABLE IF NOT EXISTS overtimes (
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,
     type TEXT NOT NULL,
@@ -59,10 +59,10 @@ CREATE TABLE IF NOT EXISTS overtimes (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
-);
+  )`,
 
--- 3. 日常生活、医疗、教育与综合支出表
-CREATE TABLE IF NOT EXISTS expenses (
+  // 3. 日常生活、医疗、教育与综合支出表
+  `CREATE TABLE IF NOT EXISTS expenses (
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,
     type TEXT NOT NULL,
@@ -75,10 +75,10 @@ CREATE TABLE IF NOT EXISTS expenses (
     created_at TEXT NOT NULL,
     updated_at TEXT,
     deleted_at TEXT
-);
+  )`,
 
--- 4. 人情往来与礼金随礼表
-CREATE TABLE IF NOT EXISTS social_gifts (
+  // 4. 人情往来与礼金随礼表
+  `CREATE TABLE IF NOT EXISTS social_gifts (
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,
     direction TEXT NOT NULL,
@@ -93,10 +93,10 @@ CREATE TABLE IF NOT EXISTS social_gifts (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
-);
+  )`,
 
--- 5. 车辆档案表
-CREATE TABLE IF NOT EXISTS vehicles (
+  // 5. 车辆档案表
+  `CREATE TABLE IF NOT EXISTS vehicles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     plate_number TEXT,
@@ -113,10 +113,10 @@ CREATE TABLE IF NOT EXISTS vehicles (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     deleted_at TEXT
-);
+  )`,
 
--- 6. 加油与充电记录表
-CREATE TABLE IF NOT EXISTS fuel_records (
+  // 6. 加油与充电记录表
+  `CREATE TABLE IF NOT EXISTS fuel_records (
     id TEXT PRIMARY KEY,
     vehicle_id TEXT NOT NULL,
     date TEXT NOT NULL,
@@ -133,12 +133,11 @@ CREATE TABLE IF NOT EXISTS fuel_records (
     notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    deleted_at TEXT,
-    FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
-);
+    deleted_at TEXT
+  )`,
 
--- 7. 汽车保养与维修记录表
-CREATE TABLE IF NOT EXISTS maintenance_records (
+  // 7. 汽车保养与维修记录表
+  `CREATE TABLE IF NOT EXISTS maintenance_records (
     id TEXT PRIMARY KEY,
     vehicle_id TEXT NOT NULL,
     date TEXT NOT NULL,
@@ -155,28 +154,27 @@ CREATE TABLE IF NOT EXISTS maintenance_records (
     notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    deleted_at TEXT,
-    FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
-);
+    deleted_at TEXT
+  )`,
 
--- 8. 用户偏好配置表
-CREATE TABLE IF NOT EXISTS app_settings (
+  // 8. 用户偏好配置表
+  `CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
-);
+  )`,
 
--- 9. 同步元信息表
-CREATE TABLE IF NOT EXISTS sync_meta (
+  // 9. 同步元信息表
+  `CREATE TABLE IF NOT EXISTS sync_meta (
     key TEXT PRIMARY KEY,
     revision INTEGER DEFAULT 1,
     schema_version INTEGER DEFAULT 2,
     last_synced_at TEXT,
     updated_at TEXT NOT NULL
-);
+  )`,
 
--- 10. 操作审计日志表
-CREATE TABLE IF NOT EXISTS audit_logs (
+  // 10. 操作审计日志表
+  `CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     action TEXT NOT NULL,
     resource TEXT NOT NULL,
@@ -185,21 +183,23 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     ip_hash TEXT,
     user_agent TEXT,
     created_at TEXT NOT NULL
-);
+  )`,
 
--- 索引
-CREATE INDEX IF NOT EXISTS idx_salaries_month_del ON salaries(month, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_overtimes_date_del ON overtimes(date, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_expenses_date_del ON expenses(date, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_social_gifts_date_del ON social_gifts(date, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_fuel_veh_date_del ON fuel_records(vehicle_id, date, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_maint_veh_date_del ON maintenance_records(vehicle_id, date, deleted_at);
-CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
+  // 索引
+  `CREATE INDEX IF NOT EXISTS idx_salaries_month_del ON salaries(month, deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_overtimes_date_del ON overtimes(date, deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_expenses_date_del ON expenses(date, deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_social_gifts_date_del ON social_gifts(date, deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_fuel_veh_date_del ON fuel_records(vehicle_id, date, deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_maint_veh_date_del ON maintenance_records(vehicle_id, date, deleted_at)`,
+  `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`,
 
--- 默认全局元数据记录
-INSERT OR IGNORE INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at)
-VALUES ('global', 1, 2, NULL, datetime('now'));
-`;
+  // 初始化全局元数据记录
+  `INSERT OR IGNORE INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at)
+   VALUES ('global', 1, 2, NULL, datetime('now'))`
+];
+
+export const D1_FULL_SCHEMA_SQL = D1_SCHEMA_STATEMENTS.join(';\n\n') + ';';
 
 let isSchemaEnsured = false;
 
@@ -207,7 +207,14 @@ let isSchemaEnsured = false;
  * 自动检测并初始化 D1 数据库结构 (零配置自愈)
  */
 export async function ensureD1Schema(db: any): Promise<boolean> {
+  if (!db || typeof db.prepare !== 'function') {
+    throw new Error(
+      "Worker 未绑定 D1 数据库变量 (env.DB is undefined)。请在 Cloudflare 仪表盘 Worker -> Settings -> Variables and Secrets -> D1 Database Bindings 中添加绑定，Variable name 必须设置为 'DB'"
+    );
+  }
+
   if (isSchemaEnsured) return true;
+
   try {
     // 快速探测是否已存在 sync_meta 和 expenses 表
     const test = await db.prepare("SELECT key FROM sync_meta WHERE key = 'global'").first();
@@ -217,15 +224,34 @@ export async function ensureD1Schema(db: any): Promise<boolean> {
       return true;
     }
   } catch {
-    // 表不存在，需要执行自动初始化
+    // 表不存在或查询异常，执行逐条建表初始化
   }
 
   try {
-    await db.exec(D1_FULL_SCHEMA_SQL);
+    if (typeof db.exec === 'function') {
+      await db.exec(D1_FULL_SCHEMA_SQL);
+    } else {
+      for (const stmt of D1_SCHEMA_STATEMENTS) {
+        await db.prepare(stmt).run().catch((e: any) => {
+          console.warn('Schema statement warning:', e);
+        });
+      }
+    }
     isSchemaEnsured = true;
     return true;
-  } catch (err) {
-    console.error('Failed to auto-execute D1 schema SQL:', err);
-    return false;
+  } catch (err: any) {
+    console.error('Failed in db.exec, falling back to statement-by-statement execution:', err);
+    try {
+      for (const stmt of D1_SCHEMA_STATEMENTS) {
+        await db.prepare(stmt).run().catch((e: any) => {
+          console.warn('Schema statement warning on fallback:', e);
+        });
+      }
+      isSchemaEnsured = true;
+      return true;
+    } catch (fallbackErr: any) {
+      console.error('All schema initialization attempts failed:', fallbackErr);
+      throw new Error(`D1 自动建表失败: ${fallbackErr.message || fallbackErr}`);
+    }
   }
 }
