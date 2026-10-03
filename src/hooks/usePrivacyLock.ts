@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppSettings } from '../types';
 import { hashPassword, verifyPasswordHash } from '../utils/crypto';
 import { verifyTOTPCode } from '../utils/totp';
+import {
+  authenticateWithBiometrics,
+  isPlatformAuthenticatorAvailable,
+  isWebAuthnSupported,
+  registerBiometricCredential,
+} from '../utils/webauthn';
 
 const DEMO_PIN_HASH = 'cWl5dWVfbWFzdGVyXzEyMzQ1Nl9hdXRoX3Yy';
 export const QIYUE_AUTH_STATUS_KEY = 'qiyue_master_unlocked';
@@ -14,7 +20,16 @@ export function usePrivacyLock(
   // 生产环境安全策略：有效自定义密码必须存在且不能是遗留的演示弱哈希
   const hasPassword = Boolean(settings.pinHash && settings.pinHash !== DEMO_PIN_HASH);
   const is2FAEnabled = Boolean(settings.isTwoFactorEnabled && settings.twoFactorSecret);
+  const isBiometricActive = Boolean(settings.isBiometricEnabled && settings.biometricCredentialId);
   const autoLockMinutes = typeof settings.autoLockMinutes === 'number' ? settings.autoLockMinutes : 15;
+
+  const [isBiometricSupported, setIsBiometricSupported] = useState<boolean>(false);
+  const [isBiometricPlatformAvailable, setIsBiometricPlatformAvailable] = useState<boolean>(false);
+
+  useEffect(() => {
+    setIsBiometricSupported(isWebAuthnSupported());
+    isPlatformAuthenticatorAvailable().then(setIsBiometricPlatformAvailable);
+  }, []);
 
   // 辅助函数：判断给定时间戳与当前时间相比是否已超时
   const isExpired = useCallback((lastTimestamp: number, lockMinutes: number): boolean => {
@@ -24,11 +39,7 @@ export function usePrivacyLock(
     return elapsedMinutes >= lockMinutes;
   }, []);
 
-  // 初始化解锁状态：
-  // 核心规则：
-  // 1. 如果已设置密码，检查本地保存的上次活跃时间是否在有效时间内；
-  // 2. 若未超时，保持解锁；若已超时，锁定并要求密码验证；
-  // 3. 若尚未设置密码，则开放初始设置。
+  // 初始化解锁状态
   const [isUnlocked, setIsUnlocked] = useState<boolean>(() => {
     try {
       const unlocked = localStorage.getItem(QIYUE_AUTH_STATUS_KEY);
@@ -59,7 +70,6 @@ export function usePrivacyLock(
 
   // 记录用户交互活跃状态（节流写入 localStorage）
   const recordActivity = useCallback(() => {
-    // 仅在当前已解锁状态下更新活跃时间
     if (!isUnlocked) return;
 
     const now = Date.now();
@@ -91,7 +101,7 @@ export function usePrivacyLock(
       try {
         localStorage.removeItem(QIYUE_AUTH_STATUS_KEY);
       } catch {}
-      return true; // 已触发锁定
+      return true;
     }
 
     return false;
@@ -116,7 +126,6 @@ export function usePrivacyLock(
       if (document.visibilityState === 'visible') {
         const locked = performLockCheck();
         if (!locked) {
-          // 未超时，记录当前唤醒为活跃
           recordActivity();
         }
       }
@@ -131,12 +140,11 @@ export function usePrivacyLock(
     };
   }, [isUnlocked, hasPassword, autoLockMinutes, performLockCheck, recordActivity]);
 
-  // 3. 用户交互事件监听（点击、按键、触摸）
+  // 3. 用户交互事件监听
   useEffect(() => {
     if (!isUnlocked) return;
 
     const handleUserInteraction = () => {
-      // 每次交互前先快速确认是否已超时
       const locked = performLockCheck();
       if (!locked) {
         recordActivity();
@@ -259,6 +267,51 @@ export function usePrivacyLock(
     return false;
   };
 
+  // 生物识别一键解锁 (Touch ID / Face ID / 指纹 / Windows Hello)
+  const unlockWithBiometrics = async (): Promise<{ success: boolean; error?: string }> => {
+    if (!isBiometricActive || !settings.biometricCredentialId) {
+      return { success: false, error: '生物识别未开启或未绑定' };
+    }
+
+    const res = await authenticateWithBiometrics(settings.biometricCredentialId);
+    if (res.success) {
+      const now = Date.now();
+      setIsUnlocked(true);
+      lastActiveTimeRef.current = now;
+      lastWriteTimeRef.current = now;
+      try {
+        localStorage.setItem(QIYUE_AUTH_STATUS_KEY, 'true');
+        localStorage.setItem(QIYUE_LAST_ACTIVE_KEY, String(now));
+      } catch {}
+      return { success: true };
+    }
+
+    return { success: false, error: res.error };
+  };
+
+  // 绑定并开启生物识别
+  const enableBiometrics = async (): Promise<{ success: boolean; deviceName?: string; error?: string }> => {
+    const res = await registerBiometricCredential();
+    if (res.success && res.credentialId) {
+      onUpdateSettings({
+        isBiometricEnabled: true,
+        biometricCredentialId: res.credentialId,
+        biometricDeviceName: res.deviceName,
+      });
+      return { success: true, deviceName: res.deviceName };
+    }
+    return { success: false, error: res.error };
+  };
+
+  // 关闭生物识别
+  const disableBiometrics = () => {
+    onUpdateSettings({
+      isBiometricEnabled: false,
+      biometricCredentialId: '',
+      biometricDeviceName: '',
+    });
+  };
+
   // 首次设置或修改主密码
   const setMasterPassword = async (newPassword: string): Promise<boolean> => {
     if (!newPassword) return false;
@@ -297,7 +350,7 @@ export function usePrivacyLock(
     });
   };
 
-  // 立即手动锁屏 / 登出（用户主动点击 Navbar 或设置中的锁屏按钮时触发）
+  // 立即手动锁屏 / 登出
   const lockNow = () => {
     setIsUnlocked(false);
     try {
@@ -310,9 +363,16 @@ export function usePrivacyLock(
     isUnlocked,
     hasPassword,
     is2FAEnabled,
+    isBiometricActive,
+    isBiometricSupported,
+    isBiometricPlatformAvailable,
+    biometricDeviceName: settings.biometricDeviceName,
     autoLockMinutes,
     verifyPassword,
     verify2FACode,
+    unlockWithBiometrics,
+    enableBiometrics,
+    disableBiometrics,
     setMasterPassword,
     enable2FA,
     disable2FA,

@@ -53,8 +53,16 @@ export default function App() {
   const {
     isUnlocked,
     hasPassword,
+    is2FAEnabled,
+    isBiometricActive,
+    isBiometricSupported,
+    isBiometricPlatformAvailable,
+    biometricDeviceName,
     verifyPassword,
     verify2FACode,
+    unlockWithBiometrics,
+    enableBiometrics,
+    disableBiometrics,
     setMasterPassword,
     enable2FA,
     disable2FA,
@@ -88,13 +96,16 @@ export default function App() {
       onClick={recordActivity}
       onKeyDown={recordActivity}
     >
-      {/* 单用户与二步验证 (2FA) 锁屏遮罩 */}
+      {/* 单用户、二步验证 (2FA) 与生物识别锁屏遮罩 */}
       {!isUnlocked && (
         <PrivacyLockModal
           hasPassword={hasPassword}
           onVerifyPassword={verifyPassword}
           onVerify2FACode={verify2FACode}
           onSetPassword={setMasterPassword}
+          isBiometricActive={isBiometricActive}
+          onUnlockWithBiometrics={unlockWithBiometrics}
+          biometricDeviceName={biometricDeviceName}
         />
       )}
 
@@ -226,6 +237,12 @@ export default function App() {
               onSetPin={setMasterPassword}
               onEnable2FA={enable2FA}
               onDisable2FA={disable2FA}
+              isBiometricActive={isBiometricActive}
+              isBiometricSupported={isBiometricSupported}
+              isBiometricPlatformAvailable={isBiometricPlatformAvailable}
+              biometricDeviceName={biometricDeviceName}
+              onEnableBiometrics={enableBiometrics}
+              onDisableBiometrics={disableBiometrics}
               onLockScreen={lockNow}
               theme={theme}
               onSetTheme={setTheme}

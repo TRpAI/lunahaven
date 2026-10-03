@@ -4,12 +4,15 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
+  Fingerprint,
   KeyRound,
   Lock,
+  ScanFace,
   Shield,
   ShieldAlert,
   ShieldCheck,
   Smartphone,
+  Sparkles,
 } from 'lucide-react';
 
 interface PrivacyLockModalProps {
@@ -17,6 +20,9 @@ interface PrivacyLockModalProps {
   onVerifyPassword: (password: string) => Promise<{ success: boolean; requires2FA: boolean }>;
   onVerify2FACode: (codeOrBackup: string) => Promise<boolean>;
   onSetPassword: (password: string) => Promise<boolean> | boolean;
+  isBiometricActive?: boolean;
+  onUnlockWithBiometrics?: () => Promise<{ success: boolean; error?: string }>;
+  biometricDeviceName?: string;
 }
 
 export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
@@ -24,6 +30,9 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
   onVerifyPassword,
   onVerify2FACode,
   onSetPassword,
+  isBiometricActive = false,
+  onUnlockWithBiometrics,
+  biometricDeviceName,
 }) => {
   const [step, setStep] = useState<'password' | 'twoFactor'>('password');
   const [password, setPassword] = useState('');
@@ -33,6 +42,7 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
   const [isBackupCodeMode, setIsBackupCodeMode] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isBiometricLoading, setIsBiometricLoading] = useState(false);
   const [totpSecondsRemaining, setTotpSecondsRemaining] = useState(30 - (Math.floor(Date.now() / 1000) % 30));
 
   // 30s TOTP 周期倒计时
@@ -44,6 +54,34 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
     }, 1000);
     return () => clearInterval(interval);
   }, [step]);
+
+  // 如果启用了生物识别，初次加载时尝试自动触发一次生物识别
+  useEffect(() => {
+    if (hasPassword && isBiometricActive && onUnlockWithBiometrics && step === 'password') {
+      const timer = setTimeout(() => {
+        handleBiometricAuth();
+      }, 350);
+      return () => clearTimeout(timer);
+    }
+  }, [hasPassword, isBiometricActive, onUnlockWithBiometrics, step]);
+
+  const handleBiometricAuth = async () => {
+    if (!onUnlockWithBiometrics || isBiometricLoading) return;
+    setIsBiometricLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await onUnlockWithBiometrics();
+      if (!res.success && res.error) {
+        if (!res.error.includes('取消') && !res.error.includes('canceled')) {
+          setErrorMsg(`生物识别: ${res.error}`);
+        }
+      }
+    } catch (err: any) {
+      setErrorMsg(`生物识别异常: ${err.message || err}`);
+    } finally {
+      setIsBiometricLoading(false);
+    }
+  };
 
   const handlePasswordSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -129,6 +167,8 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
             <Smartphone className="w-5 h-5 text-zinc-800 dark:text-zinc-200" />
           ) : !hasPassword ? (
             <KeyRound className="w-5 h-5 text-zinc-800 dark:text-zinc-200" />
+          ) : isBiometricActive ? (
+            <Fingerprint className="w-5 h-5 text-indigo-500 animate-pulse" />
           ) : (
             <Lock className="w-5 h-5" />
           )}
@@ -147,8 +187,34 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
             ? '首次使用，请为您的私有账本创建唯一主密码'
             : step === 'twoFactor'
             ? (isBackupCodeMode ? '请输入 8 位应急备用恢复码' : '请输入身份验证器中的 6 位动态口令')
+            : isBiometricActive
+            ? '支持使用 Touch ID / Face ID / 指纹或密码快速解锁'
             : '本系统处于私有单用户保护模式，请输入密码解锁'}
         </p>
+
+        {/* 生物识别一键快速解锁按钮 (若已开启) */}
+        {hasPassword && step === 'password' && isBiometricActive && onUnlockWithBiometrics && (
+          <div className="mb-4">
+            <button
+              type="button"
+              onClick={handleBiometricAuth}
+              disabled={isBiometricLoading}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-semibold shadow-md flex items-center justify-center gap-2 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+            >
+              <Fingerprint className={`w-4 h-4 ${isBiometricLoading ? 'animate-spin' : ''}`} />
+              <span>{isBiometricLoading ? '正在唤醒生物识别...' : '使用指纹 / 面容 / 生物识别解锁'}</span>
+            </button>
+
+            <div className="relative my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-zinc-200 dark:border-zinc-800" />
+              </div>
+              <div className="relative flex justify-center text-[10px] uppercase">
+                <span className="bg-white dark:bg-zinc-900 px-2 text-zinc-400">或使用主密码解锁</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Step 1: Master Password Login */}
         {hasPassword && step === 'password' && (
@@ -161,7 +227,7 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
                   setPassword(e.target.value);
                   setErrorMsg('');
                 }}
-                autoFocus
+                autoFocus={!isBiometricActive}
                 placeholder="输入访问密码..."
                 className="w-full px-4 py-3 pr-10 rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 transition-all font-mono text-center tracking-widest"
               />
@@ -221,9 +287,12 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
             )}
 
             {errorMsg && (
-              <p className="text-xs text-rose-500 font-medium">
-                {errorMsg}
-              </p>
+              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-600 dark:text-rose-400 text-left">
+                <p className="font-medium flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{errorMsg}</span>
+                </p>
+              </div>
             )}
 
             <button
@@ -231,21 +300,21 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
               disabled={isLoading}
               className="w-full py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
             >
-              <ShieldCheck className="w-4 h-4" />
-              <span>{isLoading ? '正在验证...' : '确认并完成解锁'}</span>
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>{isLoading ? '正在校验...' : '校验并解锁系统'}</span>
             </button>
 
-            <div className="flex items-center justify-between text-[11px] pt-1 text-zinc-400">
+            <div className="flex items-center justify-between text-xs pt-1">
               <button
                 type="button"
                 onClick={() => {
                   setStep('password');
-                  setErrorMsg('');
                   setTwoFactorInput('');
+                  setErrorMsg('');
                 }}
-                className="hover:text-zinc-700 dark:hover:text-zinc-200 flex items-center gap-1 cursor-pointer"
+                className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1 cursor-pointer"
               >
-                <ArrowLeft className="w-3 h-3" />
+                <ArrowLeft className="w-3.5 h-3.5" />
                 <span>返回密码</span>
               </button>
 
@@ -253,51 +322,43 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
                 type="button"
                 onClick={() => {
                   setIsBackupCodeMode(!isBackupCodeMode);
-                  setErrorMsg('');
                   setTwoFactorInput('');
+                  setErrorMsg('');
                 }}
-                className="hover:text-zinc-700 dark:hover:text-zinc-200 underline font-medium cursor-pointer"
+                className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
               >
-                {isBackupCodeMode ? '切换为动态口令' : '使用备用恢复码'}
+                {isBackupCodeMode ? '使用 6 位 TOTP 动态码' : '使用 8 位应急恢复码'}
               </button>
             </div>
           </form>
         )}
 
-        {/* First time initialization (强制首次创建密码) */}
+        {/* Initial Master Password Setup */}
         {!hasPassword && (
-          <form onSubmit={handleInitPassword} className="space-y-3.5 text-left">
-            <div>
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400 block mb-1">
-                设置新主密码
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value);
-                    setErrorMsg('');
-                  }}
-                  autoFocus
-                  placeholder="输入 4 位及以上密码..."
-                  className="w-full px-3.5 py-2.5 pr-9 rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 cursor-pointer"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
+          <form onSubmit={handleInitPassword} className="space-y-3.5">
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setErrorMsg('');
+                }}
+                autoFocus
+                placeholder="设置主密码 (4位及以上)..."
+                className="w-full px-4 py-2.5 pr-10 rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 font-mono text-center tracking-wider"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 p-1 cursor-pointer"
+                tabIndex={-1}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
             </div>
 
-            <div>
-              <label className="text-xs font-medium text-zinc-600 dark:text-zinc-400 block mb-1">
-                确认新主密码
-              </label>
+            <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
                 value={confirmPassword}
@@ -305,31 +366,34 @@ export const PrivacyLockModal: React.FC<PrivacyLockModalProps> = ({
                   setConfirmPassword(e.target.value);
                   setErrorMsg('');
                 }}
-                placeholder="再次输入新密码确认..."
-                className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+                placeholder="再次输入以确认主密码..."
+                className="w-full px-4 py-2.5 pr-10 rounded-xl bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100 font-mono text-center tracking-wider"
               />
             </div>
 
             {errorMsg && (
-              <p className="text-xs text-rose-500 font-medium">
-                {errorMsg}
-              </p>
+              <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-600 dark:text-rose-400 text-left">
+                <p className="font-medium flex items-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-rose-500" />
+                  <span>{errorMsg}</span>
+                </p>
+              </div>
             )}
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-2 py-3 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+              className="w-full py-2.5 px-4 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
             >
-              <KeyRound className="w-4 h-4" />
-              <span>{isLoading ? '正在保存...' : '确认保存密码并进入系统'}</span>
+              <span>{isLoading ? '正在保存...' : '完成设置并开启私有保护'}</span>
+              <ArrowRight className="w-4 h-4" />
             </button>
           </form>
         )}
 
-        <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-center gap-1.5 text-[11px] text-zinc-400">
-          <Shield className="w-3.5 h-3.5" />
-          <span>PBKDF2-SHA256 高强度加密保护 · 本地私有</span>
+        <div className="mt-5 pt-4 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-center gap-1.5 text-[10px] text-zinc-400">
+          <Shield className="w-3 h-3 text-emerald-500" />
+          <span>PBKDF2-SHA256 · WebAuthn 生物识别 · 本地安全加密</span>
         </div>
       </div>
     </div>

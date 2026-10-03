@@ -13,6 +13,7 @@ import {
   EyeOff,
   FileCode,
   FileSpreadsheet,
+  Fingerprint,
   FolderDown,
   Gift,
   GraduationCap,
@@ -25,6 +26,7 @@ import {
   Receipt,
   RefreshCw,
   RotateCcw,
+  ScanFace,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -60,6 +62,12 @@ interface SettingsViewProps {
   onSetPin: (pin: string) => void;
   onEnable2FA?: (secret: string, backupCodes: string[]) => void;
   onDisable2FA?: () => void;
+  isBiometricActive?: boolean;
+  isBiometricSupported?: boolean;
+  isBiometricPlatformAvailable?: boolean;
+  biometricDeviceName?: string;
+  onEnableBiometrics?: () => Promise<{ success: boolean; deviceName?: string; error?: string }>;
+  onDisableBiometrics?: () => void;
   onLockScreen?: () => void;
   theme: 'system' | 'light' | 'dark';
   onSetTheme: (theme: 'system' | 'light' | 'dark') => void;
@@ -75,6 +83,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSetPin,
   onEnable2FA,
   onDisable2FA,
+  isBiometricActive = false,
+  isBiometricSupported = true,
+  isBiometricPlatformAvailable = true,
+  biometricDeviceName,
+  onEnableBiometrics,
+  onDisableBiometrics,
   onLockScreen,
   theme,
   onSetTheme,
@@ -82,6 +96,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [biometricLoading, setBiometricLoading] = useState(false);
+  const [biometricMsg, setBiometricMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [is2FAModalOpen, setIs2FAModalOpen] = useState(false);
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [isCopiedBackups, setIsCopiedBackups] = useState(false);
@@ -89,6 +105,34 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const is2FAActive = Boolean(settings.isTwoFactorEnabled && settings.twoFactorSecret);
   const backupCodesCount = settings.twoFactorBackupCodes?.length || 0;
+
+  const handleEnableBiometricsClick = async () => {
+    if (!onEnableBiometrics) return;
+    setBiometricLoading(true);
+    setBiometricMsg(null);
+    try {
+      const res = await onEnableBiometrics();
+      if (res.success) {
+        setBiometricMsg({
+          type: 'success',
+          text: `🎉 生物识别已成功绑定 (${res.deviceName || '当前设备'})！下次可直接通过指纹/面容解锁。`,
+        });
+      } else {
+        setBiometricMsg({ type: 'error', text: res.error || '绑定失败' });
+      }
+    } catch (err: any) {
+      setBiometricMsg({ type: 'error', text: err.message || '绑定出错' });
+    } finally {
+      setBiometricLoading(false);
+    }
+  };
+
+  const handleDisableBiometricsClick = () => {
+    if (window.confirm('确定要解绑并关闭当前设备的生物识别解锁功能吗？')) {
+      if (onDisableBiometrics) onDisableBiometrics();
+      setBiometricMsg({ type: 'success', text: '已解绑并关闭生物识别' });
+    }
+  };
 
   const handleUpdatePassword = (e: React.FormEvent) => {
     e.preventDefault();
@@ -381,6 +425,82 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* 3. 生物识别身份验证 (WebAuthn / Touch ID / Face ID / Windows Hello) */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <Fingerprint className="w-4 h-4 text-indigo-500" />
+                <span>生物识别身份验证 (Touch ID / Face ID / 指纹)</span>
+              </h3>
+              <span
+                className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                  isBiometricActive
+                    ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60'
+                    : !isBiometricSupported
+                    ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60'
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
+                }`}
+              >
+                {isBiometricActive ? '已绑定启用' : !isBiometricSupported ? '浏览器不支持' : '未开启'}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">
+              基于 W3C WebAuthn 硬件密钥标准。支持 Apple Touch ID / Face ID、Windows Hello、Android 指纹锁屏免密一触即开。
+            </p>
+          </div>
+
+          <div className="w-full sm:w-auto shrink-0 flex justify-start sm:justify-end pt-1 sm:pt-0">
+            {!isBiometricActive ? (
+              <button
+                onClick={handleEnableBiometricsClick}
+                disabled={biometricLoading || !isBiometricSupported}
+                className="w-full sm:w-auto text-center px-4 py-2 sm:py-1.5 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-semibold shadow-xs transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
+              >
+                {biometricLoading ? '正在唤醒硬件...' : '绑定并开启生物识别'}
+              </button>
+            ) : (
+              <button
+                onClick={handleDisableBiometricsClick}
+                className="w-full sm:w-auto text-center px-3.5 py-2 sm:py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-medium transition-colors cursor-pointer"
+              >
+                解绑生物凭据
+              </button>
+            )}
+          </div>
+        </div>
+
+        {biometricMsg && (
+          <div
+            className={`p-2.5 rounded-xl border text-xs flex items-center gap-2 ${
+              biometricMsg.type === 'success'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/60 text-emerald-700 dark:text-emerald-300'
+                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300'
+            }`}
+          >
+            {biometricMsg.type === 'success' ? (
+              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-500" />
+            ) : (
+              <ShieldAlert className="w-4 h-4 shrink-0 text-rose-500" />
+            )}
+            <span>{biometricMsg.text}</span>
+          </div>
+        )}
+
+        {isBiometricActive && (
+          <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-xs text-zinc-600 dark:text-zinc-400">
+            <div className="flex items-center gap-2">
+              <ScanFace className="w-4 h-4 text-indigo-500" />
+              <span>当前已绑定设备：<b className="text-zinc-900 dark:text-zinc-100">{settings.biometricDeviceName || '本设备平台认证器'}</b></span>
+            </div>
+            <p className="text-[11px] text-zinc-400">
+              提示：生物识别凭据严格保存在当前设备的硬件安全芯片（Secure Enclave / TPM）中，若更换设备需在新设备上重新绑定。
+            </p>
           </div>
         )}
       </div>

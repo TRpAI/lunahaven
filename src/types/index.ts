@@ -252,6 +252,9 @@ export interface AppSettings {
   isTwoFactorEnabled?: boolean; // 是否启用双重验证 (2FA / TOTP)
   twoFactorSecret?: string; // 2FA Base32 密钥
   twoFactorBackupCodes?: string[]; // 2FA 备用应急恢复码
+  isBiometricEnabled?: boolean; // 是否启用生物识别解锁 (WebAuthn / Touch ID / Face ID)
+  biometricCredentialId?: string; // 生物识别凭据 ID
+  biometricDeviceName?: string; // 绑定的生物识别设备名称
   autoLockMinutes: number;
   privacyMaskNumbers: boolean; // 是否一键隐藏数字 (防偷看模式)
   activeVehicleId: string;
