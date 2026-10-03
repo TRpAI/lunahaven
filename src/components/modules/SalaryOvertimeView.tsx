@@ -23,6 +23,7 @@ import {
 import { FiveInsuranceRates, OvertimeRecord, SalaryRecord } from '../../types';
 import { exportOvertimesToCsv, exportSalariesToCsv, triggerFileDownload } from '../../utils/exportImport';
 import { calculateSalaryBreakdown, formatCurrency } from '../../utils/taxCalculator';
+import { Pagination } from '../Pagination';
 
 /**
  * 根据开始时间和结束时间自动计算加班工时 (小时)
@@ -212,6 +213,32 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
         };
       });
   }, [salaries, overtimes]);
+
+  // --- Pagination States ---
+  const [salaryPage, setSalaryPage] = useState(1);
+  const [salaryPageSize, setSalaryPageSize] = useState(10);
+
+  const [overtimePage, setOvertimePage] = useState(1);
+  const [overtimePageSize, setOvertimePageSize] = useState(15);
+
+  const [linkagePage, setLinkagePage] = useState(1);
+  const [linkagePageSize, setLinkagePageSize] = useState(12);
+
+  // Paginated data
+  const paginatedSalaries = useMemo(() => {
+    const start = (salaryPage - 1) * salaryPageSize;
+    return salaries.slice(start, start + salaryPageSize);
+  }, [salaries, salaryPage, salaryPageSize]);
+
+  const paginatedOvertimes = useMemo(() => {
+    const start = (overtimePage - 1) * overtimePageSize;
+    return overtimes.slice(start, start + overtimePageSize);
+  }, [overtimes, overtimePage, overtimePageSize]);
+
+  const paginatedLinkageData = useMemo(() => {
+    const start = (linkagePage - 1) * linkagePageSize;
+    return monthlyLinkageData.slice(start, start + linkagePageSize);
+  }, [monthlyLinkageData, linkagePage, linkagePageSize]);
 
   // --- Handlers: Salary ---
   const handleOpenAddSalary = () => {
@@ -502,119 +529,130 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
               <div className="text-xs text-zinc-400">暂无薪资发放记录，点击上方按钮录入您的第一份工资条</div>
             </div>
           ) : (
-            salaries.map((s) => {
-              const isExpanded = expandedSalaryId === s.id;
-              return (
-                <div
-                  key={s.id}
-                  className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden transition-all"
-                >
+            <>
+              {paginatedSalaries.map((s) => {
+                const isExpanded = expandedSalaryId === s.id;
+                return (
                   <div
-                    onClick={() => setExpandedSalaryId(isExpanded ? null : s.id)}
-                    className="p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40"
+                    key={s.id}
+                    className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden transition-all"
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono font-bold flex items-center justify-center text-xs">
-                        {s.month.slice(5)}月
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100 font-mono">{s.month}</span>
-                          <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.companyName}</span>
+                    <div
+                      onClick={() => setExpandedSalaryId(isExpanded ? null : s.id)}
+                      className="p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono font-bold flex items-center justify-center text-xs">
+                          {s.month.slice(5)}月
                         </div>
-                        <div className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-2">
-                          <span>应发: {formatCurrency(s.grossSalary, hidePrivacy)}</span>
-                          <span>·</span>
-                          <span>个税: {formatCurrency(s.individualIncomeTax, hidePrivacy)}</span>
-                          <span>·</span>
-                          <span>个人社保公积金: {formatCurrency(s.totalPersonalInsurance, hidePrivacy)}</span>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100 font-mono">{s.month}</span>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.companyName}</span>
+                          </div>
+                          <div className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-2">
+                            <span>应发: {formatCurrency(s.grossSalary, hidePrivacy)}</span>
+                            <span>·</span>
+                            <span>个税: {formatCurrency(s.individualIncomeTax, hidePrivacy)}</span>
+                            <span>·</span>
+                            <span>个人社保公积金: {formatCurrency(s.totalPersonalInsurance, hidePrivacy)}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
+                            {formatCurrency(s.netSalary, hidePrivacy)}
+                          </div>
+                          <div className="text-[10px] text-zinc-400">税后实发到手</div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditSalary(s);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`确定删除 ${s.month} 月的薪资条记录吗？`)) {
+                                onDeleteSalary(s.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          {isExpanded ? <ChevronUp className="w-4 h-4 text-zinc-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
-                          {formatCurrency(s.netSalary, hidePrivacy)}
+                    {isExpanded && (
+                      <div className="p-4 sm:p-5 pt-0 border-t border-zinc-100 dark:border-zinc-800 text-xs space-y-3.5 bg-zinc-50/50 dark:bg-zinc-800/20">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3">
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400">基本工资</span>
+                            <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.baseSalary, hidePrivacy)}</div>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400">绩效/奖金</span>
+                            <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.performancePay, hidePrivacy)}</div>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400">加班费</span>
+                            <div className="font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(s.overtimePay, hidePrivacy)}</div>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400">企业总用人成本</span>
+                            <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.companyTotalCost, hidePrivacy)}</div>
+                          </div>
                         </div>
-                        <div className="text-[10px] text-zinc-400">税后实发到手</div>
-                      </div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenEditSalary(s);
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`确定删除 ${s.month} 月的薪资条记录吗？`)) {
-                              onDeleteSalary(s.id);
-                            }
-                          }}
-                          className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                        {isExpanded ? <ChevronUp className="w-4 h-4 text-zinc-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
+                        {/* 五险一金明细列表 */}
+                        <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-2">
+                          <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                            <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
+                            <span>个人与企业五险一金明细</span>
+                          </span>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-zinc-600 dark:text-zinc-400">
+                            <div>养老保险 (个人): ¥{s.pensionPersonal}</div>
+                            <div>医疗保险 (个人): ¥{s.medicalPersonal}</div>
+                            <div>失业保险 (个人): ¥{s.unemploymentPersonal}</div>
+                            <div>住房公积金 (个人): ¥{s.housingFundPersonal}</div>
+                            <div>养老 (企业): ¥{s.pensionCompany}</div>
+                            <div>医疗 (企业): ¥{s.medicalCompany}</div>
+                            <div>工伤/生育: ¥{s.injuryCompany + s.maternityCompany}</div>
+                            <div>公积金 (企业): ¥{s.housingFundCompany}</div>
+                          </div>
+                        </div>
+
+                        {s.notes && (
+                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                            备注: {s.notes}
+                          </div>
+                        )}
                       </div>
-                    </div>
+                    )}
                   </div>
+                );
+              })}
 
-                  {isExpanded && (
-                    <div className="p-4 sm:p-5 pt-0 border-t border-zinc-100 dark:border-zinc-800 text-xs space-y-3.5 bg-zinc-50/50 dark:bg-zinc-800/20">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3">
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
-                          <span className="text-[10px] text-zinc-400">基本工资</span>
-                          <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.baseSalary, hidePrivacy)}</div>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
-                          <span className="text-[10px] text-zinc-400">绩效/奖金</span>
-                          <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.performancePay, hidePrivacy)}</div>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
-                          <span className="text-[10px] text-zinc-400">加班费</span>
-                          <div className="font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(s.overtimePay, hidePrivacy)}</div>
-                        </div>
-                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
-                          <span className="text-[10px] text-zinc-400">企业总用人成本</span>
-                          <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.companyTotalCost, hidePrivacy)}</div>
-                        </div>
-                      </div>
-
-                      {/* 五险一金明细列表 */}
-                      <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-2">
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                          <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
-                          <span>个人与企业五险一金明细</span>
-                        </span>
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-zinc-600 dark:text-zinc-400">
-                          <div>养老保险 (个人): ¥{s.pensionPersonal}</div>
-                          <div>医疗保险 (个人): ¥{s.medicalPersonal}</div>
-                          <div>失业保险 (个人): ¥{s.unemploymentPersonal}</div>
-                          <div>住房公积金 (个人): ¥{s.housingFundPersonal}</div>
-                          <div>养老 (企业): ¥{s.pensionCompany}</div>
-                          <div>医疗 (企业): ¥{s.medicalCompany}</div>
-                          <div>工伤/生育: ¥{s.injuryCompany + s.maternityCompany}</div>
-                          <div>公积金 (企业): ¥{s.housingFundCompany}</div>
-                        </div>
-                      </div>
-
-                      {s.notes && (
-                        <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                          备注: {s.notes}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })
+              <Pagination
+                currentPage={salaryPage}
+                totalItems={salaries.length}
+                pageSize={salaryPageSize}
+                onPageChange={setSalaryPage}
+                onPageSizeChange={setSalaryPageSize}
+                pageSizeOptions={[6, 12, 24, 36]}
+              />
+            </>
           )}
         </div>
       )}
@@ -630,65 +668,76 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
               <div className="text-xs text-zinc-400">暂无加班工时记录，点击上方按钮添加您的第一笔加班</div>
             </div>
           ) : (
-            overtimes.map((o) => (
-              <div
-                key={o.id}
-                className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex items-center justify-between gap-4 text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center justify-center text-xs">
-                    {o.durationHours}h
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-zinc-900 dark:text-zinc-100 font-mono">{o.date}</span>
-                      <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[10px]">
-                        {o.type === 'workday' ? '工作日延时 (1.5x)' : o.type === 'weekend' ? '周末加班 (2.0x)' : '法定节假日 (3.0x)'}
-                      </span>
+            <>
+              {paginatedOvertimes.map((o) => (
+                <div
+                  key={o.id}
+                  className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex items-center justify-between gap-4 text-xs"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center justify-center text-xs">
+                      {o.durationHours}h
                     </div>
-                    <div className="text-[11px] text-zinc-400 mt-0.5">
-                      {o.startTime && o.endTime ? `${o.startTime} ~ ${o.endTime} · ` : ''}
-                      {o.reason || '日常加班'}
-                      {o.approver ? ` · 审批人: ${o.approver}` : ''}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="text-right">
-                    <div className="font-bold font-mono text-zinc-900 dark:text-zinc-100 text-sm">
-                      {o.settlementType === 'comp_time' ? (
-                        <span className="text-purple-600 dark:text-purple-400">转调休 {o.durationHours}h</span>
-                      ) : (
-                        <span className="text-amber-600 dark:text-amber-400">{formatCurrency(o.estimatedPay, hidePrivacy)}</span>
-                      )}
-                    </div>
-                    <div className="text-[10px] text-zinc-400">
-                      {o.settlementType === 'comp_time' ? `已使用 ${o.compTimeHoursUsed || 0}h` : '折算加班费'}
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-zinc-900 dark:text-zinc-100 font-mono">{o.date}</span>
+                        <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[10px]">
+                          {o.type === 'workday' ? '工作日延时 (1.5x)' : o.type === 'weekend' ? '周末加班 (2.0x)' : '法定节假日 (3.0x)'}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-zinc-400 mt-0.5">
+                        {o.startTime && o.endTime ? `${o.startTime} ~ ${o.endTime} · ` : ''}
+                        {o.reason || '日常加班'}
+                        {o.approver ? ` · 审批人: ${o.approver}` : ''}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenEditOvertime(o)}
-                      className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm(`确定删除 ${o.date} 的加班记录吗？`)) {
-                          onDeleteOvertime(o.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="font-bold font-mono text-zinc-900 dark:text-zinc-100 text-sm">
+                        {o.settlementType === 'comp_time' ? (
+                          <span className="text-purple-600 dark:text-purple-400">转调休 {o.durationHours}h</span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400">{formatCurrency(o.estimatedPay, hidePrivacy)}</span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-zinc-400">
+                        {o.settlementType === 'comp_time' ? `已使用 ${o.compTimeHoursUsed || 0}h` : '折算加班费'}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleOpenEditOvertime(o)}
+                        className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`确定删除 ${o.date} 的加班记录吗？`)) {
+                            onDeleteOvertime(o.id);
+                          }
+                        }}
+                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              ))}
+
+              <Pagination
+                currentPage={overtimePage}
+                totalItems={overtimes.length}
+                pageSize={overtimePageSize}
+                onPageChange={setOvertimePage}
+                onPageSizeChange={setOvertimePageSize}
+                pageSizeOptions={[10, 15, 30, 50]}
+              />
+            </>
           )}
         </div>
       )}
@@ -727,7 +776,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  monthlyLinkageData.map((row) => (
+                  paginatedLinkageData.map((row) => (
                     <tr key={row.month} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors">
                       <td className="p-3.5 font-bold text-zinc-900 dark:text-zinc-100 font-sans">
                         {row.month}
@@ -778,6 +827,15 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={linkagePage}
+            totalItems={monthlyLinkageData.length}
+            pageSize={linkagePageSize}
+            onPageChange={setLinkagePage}
+            onPageSizeChange={setLinkagePageSize}
+            pageSizeOptions={[6, 12, 24, 36]}
+          />
         </div>
       )}
 

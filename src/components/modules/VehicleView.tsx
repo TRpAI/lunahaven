@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Car,
@@ -24,6 +24,7 @@ import {
 import { exportFuelsToCsv, exportMaintenancesToCsv, triggerFileDownload } from '../../utils/exportImport';
 import { getVehicleHealthStatus } from '../../utils/fuelCalculator';
 import { formatCurrency } from '../../utils/taxCalculator';
+import { Pagination } from '../Pagination';
 
 export const FUEL_TYPE_OPTIONS = [
   {
@@ -582,6 +583,28 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     : (currentVehicle.fuelType === 'electric' ? 15.4 : 7.6);
   const totalMaintCost = vehicleMaintenances.reduce((acc, m) => acc + m.totalCost, 0);
 
+  // 分页状态与切片
+  const [fuelPage, setFuelPage] = useState(1);
+  const [fuelPageSize, setFuelPageSize] = useState(15);
+  const [maintPage, setMaintPage] = useState(1);
+  const [maintPageSize, setMaintPageSize] = useState(15);
+
+  // 车辆切换时重置分页
+  useEffect(() => {
+    setFuelPage(1);
+    setMaintPage(1);
+  }, [currentVehicle?.id]);
+
+  const paginatedFuels = useMemo(() => {
+    const start = (fuelPage - 1) * fuelPageSize;
+    return vehicleFuels.slice(start, start + fuelPageSize);
+  }, [vehicleFuels, fuelPage, fuelPageSize]);
+
+  const paginatedMaintenances = useMemo(() => {
+    const start = (maintPage - 1) * maintPageSize;
+    return vehicleMaintenances.slice(start, start + maintPageSize);
+  }, [vehicleMaintenances, maintPage, maintPageSize]);
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* 顶部车辆切换与标题 */}
@@ -792,7 +815,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
             <>
               {/* 移动端窄屏精简卡片流 */}
               <div className="block lg:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                {vehicleFuels.map((f) => {
+                {paginatedFuels.map((f) => {
                   const isElectric = currentVehicle.fuelType === 'electric' || f.fuelType?.includes('电');
                   return (
                     <div
@@ -939,7 +962,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                    {vehicleFuels.map((f) => (
+                    {paginatedFuels.map((f) => (
                       <tr key={f.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
                         <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
                           <div>{f.date}</div>
@@ -1028,6 +1051,16 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   </tbody>
                 </table>
               </div>
+
+              {/* 补能分页控制器 */}
+              <Pagination
+                currentPage={fuelPage}
+                totalItems={vehicleFuels.length}
+                pageSize={fuelPageSize}
+                onPageChange={setFuelPage}
+                onPageSizeChange={setFuelPageSize}
+                pageSizeOptions={[10, 15, 30, 50]}
+              />
             </>
           )}
         </div>
@@ -1044,7 +1077,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
             <>
               {/* 移动端窄屏精简维保卡片流 */}
               <div className="block lg:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                {vehicleMaintenances.map((m) => (
+                {paginatedMaintenances.map((m) => (
                   <div
                     key={m.id}
                     className="p-3.5 sm:p-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors space-y-2.5"
@@ -1124,7 +1157,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                    {vehicleMaintenances.map((m) => (
+                    {paginatedMaintenances.map((m) => (
                       <tr key={m.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
                         <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
                           {m.date}
@@ -1187,6 +1220,16 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   </tbody>
                 </table>
               </div>
+
+              {/* 维保分页控制器 */}
+              <Pagination
+                currentPage={maintPage}
+                totalItems={vehicleMaintenances.length}
+                pageSize={maintPageSize}
+                onPageChange={setMaintPage}
+                onPageSizeChange={setMaintPageSize}
+                pageSizeOptions={[10, 15, 30, 50]}
+              />
             </>
           )}
         </div>
