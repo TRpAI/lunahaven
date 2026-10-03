@@ -1,4 +1,5 @@
 import { getCorsHeaders, verifyAuthorization } from './auth';
+import { ensureD1Schema } from './schema';
 import { Env, SyncPayload, D1PreparedStatement } from './types';
 import { createErrorResponse, createSuccessResponse, validateSyncPayload } from './validation';
 
@@ -14,13 +15,23 @@ export default {
 
     const url = new URL(request.url);
 
+    // 自动检测并初始化表结构 (零配置自愈)
+    await ensureD1Schema(env.DB);
+
     // 2. 生产级健康检查接口 (GET /api/health)
     // 同时探测 Worker 运行状态与 D1 数据库连接可用性
     if (url.pathname === '/api/health') {
       try {
-        const meta = await env.DB.prepare(
+        let meta = await env.DB.prepare(
           "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
         ).first();
+
+        if (!meta) {
+          await ensureD1Schema(env.DB);
+          meta = await env.DB.prepare(
+            "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
+          ).first();
+        }
 
         return createSuccessResponse(
           {
@@ -61,6 +72,18 @@ export default {
     }
 
     try {
+      // 3.1 手动一键初始化/修复表结构端点 (POST /api/init)
+      if (request.method === 'POST' && url.pathname === '/api/init') {
+        const ok = await ensureD1Schema(env.DB);
+        return createSuccessResponse(
+          {
+            initialized: ok,
+            message: ok ? 'D1 数据库表结构已全部初始化就绪' : '初始化执行失败',
+          },
+          requestId,
+          corsHeaders
+        );
+      }
       // 4. GET /api/sync - 支持全量与增量 (since) 数据拉取
       if (request.method === 'GET' && url.pathname === '/api/sync') {
         const since = url.searchParams.get('since');

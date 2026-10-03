@@ -269,6 +269,38 @@ export async function checkCloudflareHealth(workerUrl: string): Promise<{
 }
 
 /**
+ * 远程一键调用 Worker 执行 D1 数据库结构全量初始化与修复
+ */
+export async function initCloudflareD1Database(
+  workerUrl: string,
+  apiToken: string
+): Promise<{ initialized: boolean; message: string }> {
+  const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
+  const targetUrl = `${cleanUrl}/api/init`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Client-Version': '2.1.0',
+  };
+  if (apiToken && apiToken.trim()) {
+    headers['Authorization'] = `Bearer ${apiToken.trim()}`;
+  }
+
+  const res = await fetch(targetUrl, {
+    method: 'POST',
+    headers,
+  });
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.success) {
+    const errorMsg = json?.error?.message || json?.error || `HTTP ${res.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return json.data;
+}
+
+/**
  * 将前端完整数据生成 Cloudflare D1 SQLite 离线导入脚本 (.sql)
  */
 export function generateCloudflareD1SqlDump(data: LedgerFullData): string {

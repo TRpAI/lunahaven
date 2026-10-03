@@ -4,14 +4,20 @@ import {
   CheckCircle2,
   Cloud,
   CloudCog,
+  Code2,
+  Copy,
   Download,
   HelpCircle,
+  Play,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import {
   checkCloudflareHealth,
+  CLOUDFLARE_D1_SCHEMA_SQL,
   generateCloudflareD1SqlDump,
+  initCloudflareD1Database,
   pullFromCloudflareWorker,
 } from '../../utils/d1Sync';
 import { triggerFileDownload } from '../../utils/exportImport';
@@ -43,7 +49,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   const [apiTokenInput, setApiTokenInput] = useState(d1Config.apiToken || '');
   const [autoSyncInput, setAutoSyncInput] = useState<boolean>(d1Config.autoSync ?? true);
   const [autoSyncDelayInput, setAutoSyncDelayInput] = useState<number>(d1Config.autoSyncDelaySeconds ?? 15);
-  const [activeTab, setActiveTab] = useState<'config' | 'tutorial'>('config');
+  const [activeTab, setActiveTab] = useState<'config' | 'tutorial' | 'sql'>('config');
 
   const [pullLoading, setPullLoading] = useState(false);
   const [pullMsg, setPullMsg] = useState<string | null>(null);
@@ -53,6 +59,9 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     ok: boolean;
     text: string;
   } | null>(null);
+
+  const [initLoading, setInitLoading] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
@@ -106,6 +115,27 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     }
   };
 
+  const handleInitRemoteDatabase = async () => {
+    const url = workerUrlInput.trim() || d1Config.workerUrl;
+    const token = apiTokenInput.trim() || d1Config.apiToken;
+
+    if (!url) {
+      alert('请先填入 Cloudflare Worker API URL');
+      return;
+    }
+
+    setInitLoading(true);
+    try {
+      const res = await initCloudflareD1Database(url, token);
+      alert(`🎉 ${res.message || 'D1 数据库表结构已全部初始化就绪！'}\n现在您可以正常执行拉取与同步。`);
+      handleRunHealthCheck();
+    } catch (err: any) {
+      alert(`初始化失败: ${err.message}\n您也可以切换到「SQL 建表语句」标签页，复制建表 SQL 到 Cloudflare 控制台手动执行。`);
+    } finally {
+      setInitLoading(false);
+    }
+  };
+
   const handlePullFromCloud = async () => {
     if (!workerUrlInput) {
       alert('请先配置 Cloudflare Worker API 地址');
@@ -124,6 +154,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         ...fullData,
         salaries: (pulled.salaries as any) || fullData.salaries,
         overtimes: (pulled.overtimes as any) || fullData.overtimes,
+        expenses: (pulled.expenses as any) || fullData.expenses,
         gifts: (pulled.gifts as any) || fullData.gifts,
         vehicles: (pulled.vehicles as any) || fullData.vehicles,
         fuels: (pulled.fuels as any) || fullData.fuels,
@@ -135,6 +166,12 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     } finally {
       setPullLoading(false);
     }
+  };
+
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(CLOUDFLARE_D1_SCHEMA_SQL);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2000);
   };
 
   return (
@@ -156,6 +193,18 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {d1Config.workerUrl && (
+            <button
+              onClick={handleInitRemoteDatabase}
+              disabled={initLoading}
+              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50"
+              title="一键调用 Worker 远程自动创建所有缺失的 D1 数据表"
+            >
+              <Sparkles className={`w-3.5 h-3.5 ${initLoading ? 'animate-spin' : ''}`} />
+              <span>{initLoading ? '建表中...' : '一键初始化 D1 表结构'}</span>
+            </button>
+          )}
+
           {d1Config.workerUrl && (
             <button
               onClick={onManualSync}
@@ -212,40 +261,51 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
           </div>
           <button
             onClick={onManualSync}
-            disabled={isSyncing}
-            className="px-3 py-1 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold shrink-0 cursor-pointer transition-colors"
+            className="text-[11px] font-bold underline hover:text-amber-900 dark:hover:text-amber-100 shrink-0 cursor-pointer"
           >
-            立刻推送
+            立即发送
           </button>
         </div>
       )}
 
+      {/* 同步错误提示 */}
+      {syncError && (
+        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5">
+          <div className="w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">!</div>
+          <div className="flex-1">
+            <div className="font-bold">云端同步出现异常</div>
+            <p className="mt-0.5 opacity-90">{syncError}</p>
+            <p className="mt-1 text-[11px] opacity-75">
+              提示：若首次部署且提示表不存在，可点击上方【一键初始化 D1 表结构】或在 Cloudflare 控制台执行建表 SQL。
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 拉取提示 */}
+      {pullMsg && (
+        <div
+          className={`p-3.5 rounded-2xl border text-xs flex items-center gap-2 ${
+            pullMsg.includes('失败')
+              ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-700 dark:text-rose-300'
+              : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-700 dark:text-emerald-300'
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{pullMsg}</span>
+        </div>
+      )}
+
+      {/* 健康诊断状态 */}
       {healthStatusResult && (
         <div
-          className={`p-3.5 rounded-2xl text-xs flex items-center justify-between gap-3 border shadow-xs ${
+          className={`p-3.5 rounded-2xl border text-xs flex items-center gap-2 ${
             healthStatusResult.ok
-              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300'
-              : 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800/60 text-rose-800 dark:text-rose-300'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-700 dark:text-emerald-300'
+              : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-700 dark:text-rose-300'
           }`}
         >
           <span>{healthStatusResult.text}</span>
-        </div>
-      )}
-
-      {syncError && (
-        <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/60 text-rose-800 dark:text-rose-300 text-xs space-y-1 shadow-xs">
-          <div className="flex items-center justify-between font-medium">
-            <span>同步异常: {syncError}</span>
-          </div>
-          <p className="text-[11px] opacity-80">
-            请检查 Worker Secret 设置 (API_TOKEN) 以及是否已运行 <code className="font-mono bg-rose-200/60 dark:bg-rose-900/60 px-1 py-0.5 rounded">wrangler d1 migrations apply</code>。
-          </p>
-        </div>
-      )}
-
-      {pullMsg && (
-        <div className="p-3 rounded-xl bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs shadow-xs">
-          {pullMsg}
         </div>
       )}
 
@@ -261,6 +321,18 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         >
           <CloudCog className="w-3.5 h-3.5" />
           <span>连接设置</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('sql')}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
+            activeTab === 'sql'
+              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold'
+              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
+          }`}
+        >
+          <Code2 className="w-3.5 h-3.5" />
+          <span>D1 建表 SQL (手动执行)</span>
         </button>
 
         <button
@@ -377,58 +449,67 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         </div>
       )}
 
-      {/* 2. 3分钟生产部署教程指南 */}
+      {/* 2. SQL 手动执行面板 */}
+      {activeTab === 'sql' && (
+        <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4 text-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <Code2 className="w-4 h-4 text-indigo-500" />
+                <span>Cloudflare D1 完整建表 SQL 语句</span>
+              </h3>
+              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+                可直接复制下方 SQL，在 Cloudflare 控制台（D1 Database → 你的数据库 → Console）中一键粘贴执行。
+              </p>
+            </div>
+
+            <button
+              onClick={handleCopySql}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs transition-colors cursor-pointer shrink-0"
+            >
+              {copiedSql ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copiedSql ? '已复制 SQL' : '一键复制完整 SQL'}</span>
+            </button>
+          </div>
+
+          <div className="p-4 rounded-xl bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto max-h-96 border border-zinc-800">
+            <pre className="whitespace-pre">{CLOUDFLARE_D1_SCHEMA_SQL}</pre>
+          </div>
+        </div>
+      )}
+
+      {/* 3. 3分钟生产部署教程指南 */}
       {activeTab === 'tutorial' && (
         <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
           <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
-            极简 4 步部署生产级 Cloudflare Worker + D1 边缘数据库
+            极简 3 步部署 Cloudflare Worker + D1 边缘数据库
           </h3>
           <p className="text-zinc-500 dark:text-zinc-400">
-            本项目已在代码仓库中独立拆分了完整规范的 <code className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 font-mono text-zinc-800 dark:text-zinc-200">worker/</code> 目录（内含 migrations 迁移版本管理、生产严格 CORS 与 Secret 鉴权）。
+            本项目已在代码仓库中独立拆分了完整规范的 <code className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 font-mono text-zinc-800 dark:text-zinc-200">worker/</code> 目录（内含自动表结构自愈、生产严格 CORS 与 Secret 鉴权）。
           </p>
 
           <div className="space-y-3">
             <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
-              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 1: 创建 Cloudflare D1 边缘数据库</div>
-              <p className="text-zinc-500 dark:text-zinc-400">打开终端进入项目，使用 Wrangler CLI 创建 D1 数据库：</p>
-              <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono mt-1 text-[11px] overflow-x-auto">
-{`npx wrangler d1 create qiyue_ledger_db`}
-              </pre>
-              <p className="text-[11px] text-zinc-400 mt-1.5">
-                记录终端返回的 <code className="font-mono text-zinc-300">database_id</code>，填写到 <code className="font-mono text-zinc-300">worker/wrangler.toml</code> 中。
+              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">方式 A（最简推荐）：部署 Worker 后网页一键建表</div>
+              <p className="text-zinc-500 dark:text-zinc-400">
+                1. 在 Cloudflare 部署 Worker 后，在网页填入 Worker URL 与 API_TOKEN。<br />
+                2. 直接点击顶部【一键初始化 D1 表结构】按钮，Worker 会自动在 D1 创建全部 8 张业务表与索引！
               </p>
             </div>
 
             <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
-              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 2: 规范执行数据库版本迁移 (Migrations)</div>
+              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">方式 B：Cloudflare 控制台 Web Console 粘贴执行</div>
               <p className="text-zinc-500 dark:text-zinc-400">
-                运行项目内置的 0001 初始化建表、0002 sync_meta 元数据和 0003 生产复合索引与审计表迁移：
+                登录 Cloudflare Dashboard → 左侧进入 <b>D1 SQL Database</b> → 点击你的数据库 → 进入 <b>Console</b> 选项卡 → 复制上方「D1 建表 SQL」标签页中的语句直接点击 <b>Execute</b>。
               </p>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
+              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">方式 C：使用 Wrangler CLI 命令行迁移</div>
               <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono mt-1 text-[11px] overflow-x-auto">
 {`cd worker
-npx wrangler d1 migrations apply qiyue_ledger_db --remote`}
+npx wrangler d1 migrations apply qiyue_ledger_d1 --remote`}
               </pre>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
-              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 3: 设置安全密钥并部署上线</div>
-              <p className="text-zinc-500 dark:text-zinc-400">
-                通过 Cloudflare Secret 加密保护 API 鉴权密钥（生产环境强制认证，不存任何明文 Token）：
-              </p>
-              <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono mt-1 text-[11px] overflow-x-auto">
-{`# 1. 交互式输入自定义的 API 访问凭据 (如: my-secret-2026)
-npx wrangler secret put API_TOKEN
-
-# 2. 一键发布部署到 Cloudflare 边缘节点
-npx wrangler deploy`}
-              </pre>
-            </div>
-
-            <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80">
-              <div className="font-bold text-zinc-900 dark:text-zinc-100 mb-1">步骤 4: 回到网页填入端点并测试健康状态</div>
-              <p className="text-zinc-500 dark:text-zinc-400">
-                将部署完成后得到的 Worker URL（例如 <code className="font-mono text-zinc-300">https://qiyue-ledger-api.your-account.workers.dev</code>）与刚才设置的 <code className="font-mono text-zinc-300">API_TOKEN</code> 填入上方「连接设置」，点击右上角【健康诊断】确认状态正常即可畅享多设备秒级云端备份与增量同步！
-              </p>
             </div>
           </div>
         </div>
