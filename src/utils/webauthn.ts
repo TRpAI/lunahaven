@@ -58,7 +58,58 @@ export async function isPlatformAuthenticatorAvailable(): Promise<boolean> {
 }
 
 /**
- * 注册绑定本设备的生物识别凭据
+ * 获取当前设备友好显示名称
+ */
+function getDeviceDisplayName(): string {
+  if (typeof navigator === 'undefined') return '当前设备凭据';
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/.test(ua)) {
+    return 'iOS 平台 (Face ID / Touch ID)';
+  }
+  if (/Macintosh/.test(ua)) {
+    return 'macOS 平台 (Touch ID)';
+  }
+  if (/Windows/.test(ua)) {
+    return 'Windows Hello (指纹/面容/PIN)';
+  }
+  if (/Android/.test(ua)) {
+    return 'Android 生物指纹/锁屏凭据';
+  }
+  return '平台生物识别凭据';
+}
+
+/**
+ * 解析和人性化 WebAuthn 报错信息
+ */
+function formatWebAuthnError(err: any): string {
+  const msg = err?.message || '';
+  const name = err?.name || '';
+
+  if (name === 'NotAllowedError') {
+    return '操作已取消或验证超时，未完成生物识别认证';
+  }
+  if (name === 'InvalidStateError') {
+    return '该设备已存在绑定的生物识别凭据，无需重复绑定';
+  }
+  if (name === 'SecurityError') {
+    return '当前页面安全策略或域名不支持凭据管理器访问';
+  }
+  if (
+    name === 'NotReadableError' ||
+    msg.includes('credential manager') ||
+    msg.includes('Credential Manager') ||
+    name === 'UnknownError'
+  ) {
+    return '系统凭据管理器暂时无法响应。请确保手机已开启屏幕锁定（指纹/人脸/锁屏PIN），并稍后重试。';
+  }
+  if (name === 'NotSupportedError') {
+    return '当前设备或浏览器暂不支持此类型的生物凭据算法';
+  }
+  return msg || '生物识别操作失败，请重试';
+}
+
+/**
+ * 注册绑定本设备的生物识别凭据 (兼容 Android Credential Manager、iOS FaceID/TouchID 及 Windows Hello)
  */
 export async function registerBiometricCredential(
   userName = 'Qiyue Master User'
@@ -72,56 +123,75 @@ export async function registerBiometricCredential(
     return { success: false, credentialId: '', deviceName: '', error: '当前浏览器不支持生物识别功能' };
   }
 
-  try {
+  const deviceName = getDeviceDisplayName();
+
+  // 基础公钥凭据参数配置 (涵盖常见平台算法: ES256, RS256, Ed25519, PS256)
+  const pubKeyCredParams: PublicKeyCredentialParameters[] = [
+    { alg: -7, type: 'public-key' },   // ES256 (ECDSA w/ SHA-256)
+    { alg: -257, type: 'public-key' }, // RS256 (RSA w/ SHA-256)
+    { alg: -8, type: 'public-key' },   // Ed25519 (EdDSA)
+    { alg: -37, type: 'public-key' },  // PS256
+  ];
+
+  const rpId = window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname;
+
+  // 尝试创建凭据 (优先采用最佳兼容模式 userVerification: 'preferred' 解决 Android 14+ Credential Manager 崩溃问题)
+  const createCredentialWithSelection = async (
+    authenticatorSelection: AuthenticatorSelectionCriteria
+  ): Promise<PublicKeyCredential | null> => {
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
 
     const userId = new Uint8Array(16);
     window.crypto.getRandomValues(userId);
 
-    // 获取当前设备环境推断设备名称
-    const ua = navigator.userAgent;
-    let deviceName = '当前设备生物凭据';
-    if (/iPhone|iPad|iPod/.test(ua)) {
-      deviceName = 'iOS 平台 (Face ID / Touch ID)';
-    } else if (/Macintosh/.test(ua)) {
-      deviceName = 'macOS 平台 (Touch ID)';
-    } else if (/Windows/.test(ua)) {
-      deviceName = 'Windows Hello (指纹/面容/PIN)';
-    } else if (/Android/.test(ua)) {
-      deviceName = 'Android 生物指纹/人脸识别';
-    }
-
-    const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
+    const creationOptions: PublicKeyCredentialCreationOptions = {
       challenge,
       rp: {
         name: '栖月账本',
-        id: window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname,
+        id: rpId || undefined,
       },
       user: {
         id: userId,
         name: 'master_user',
         displayName: userName,
       },
-      pubKeyCredParams: [
-        { alg: -7, type: 'public-key' }, // ES256
-        { alg: -257, type: 'public-key' }, // RS256
-      ],
-      authenticatorSelection: {
-        authenticatorAttachment: 'platform', // 限制为本设备指纹/面容/平台认证器
-        userVerification: 'required',
-        residentKey: 'preferred',
-      },
+      pubKeyCredParams,
+      authenticatorSelection,
       timeout: 60000,
       attestation: 'none',
     };
 
-    const credential = (await navigator.credentials.create({
-      publicKey: publicKeyCredentialCreationOptions,
+    return (await navigator.credentials.create({
+      publicKey: creationOptions,
     })) as PublicKeyCredential | null;
+  };
+
+  try {
+    let credential: PublicKeyCredential | null = null;
+
+    try {
+      // 第一次尝试：针对本设备认证器平台
+      credential = await createCredentialWithSelection({
+        authenticatorAttachment: 'platform',
+        userVerification: 'preferred', // 使用 preferred 而非 required 规避 Android Credential Manager NotReadableError
+        residentKey: 'preferred',
+      });
+    } catch (firstErr: any) {
+      console.warn('First WebAuthn attempt failed, trying fallback mode:', firstErr);
+      // 若用户主动取消，则直接抛出不再重复打扰
+      if (firstErr?.name === 'NotAllowedError') {
+        throw firstErr;
+      }
+      // 第二次尝试：自适应宽松策略 (解决部分国内定制安卓 ROM 无法锁定 platform attachment 的问题)
+      credential = await createCredentialWithSelection({
+        userVerification: 'preferred',
+        residentKey: 'preferred',
+      });
+    }
 
     if (!credential) {
-      return { success: false, credentialId: '', deviceName: '', error: '用户取消或未完成生物识别注册' };
+      return { success: false, credentialId: '', deviceName, error: '用户取消或未完成生物识别注册' };
     }
 
     const credentialId = bufferToBase64URL(credential.rawId);
@@ -133,13 +203,12 @@ export async function registerBiometricCredential(
     };
   } catch (err: any) {
     console.error('Biometric registration error:', err);
-    if (err.name === 'NotAllowedError') {
-      return { success: false, credentialId: '', deviceName: '', error: '操作已取消或超时，未完成生物识别验证' };
-    }
-    if (err.name === 'InvalidStateError') {
-      return { success: false, credentialId: '', deviceName: '', error: '该设备生物凭据已存在或状态冲突' };
-    }
-    return { success: false, credentialId: '', deviceName: '', error: err.message || '生物识别绑定失败' };
+    return {
+      success: false,
+      credentialId: '',
+      deviceName,
+      error: formatWebAuthnError(err),
+    };
   }
 }
 
@@ -156,30 +225,44 @@ export async function authenticateWithBiometrics(
     return { success: false, error: '当前环境不支持生物识别' };
   }
 
-  try {
+  const rpId = window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname;
+
+  const runAuthentication = async (useCredentialsList: boolean): Promise<PublicKeyCredential | null> => {
     const challenge = new Uint8Array(32);
     window.crypto.getRandomValues(challenge);
 
     const allowCredentials: PublicKeyCredentialDescriptor[] = [];
-    if (credentialId) {
+    if (useCredentialsList && credentialId) {
       allowCredentials.push({
         id: base64URLToBuffer(credentialId),
         type: 'public-key',
-        transports: ['internal'],
       });
     }
 
-    const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
+    const requestOptions: PublicKeyCredentialRequestOptions = {
       challenge,
       timeout: 60000,
-      rpId: window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname,
-      userVerification: 'required',
+      rpId: rpId || undefined,
+      userVerification: 'preferred', // 使用 preferred 保证最大兼容器件成功率
       allowCredentials: allowCredentials.length > 0 ? allowCredentials : undefined,
     };
 
-    const assertion = (await navigator.credentials.get({
-      publicKey: publicKeyCredentialRequestOptions,
+    return (await navigator.credentials.get({
+      publicKey: requestOptions,
     })) as PublicKeyCredential | null;
+  };
+
+  try {
+    let assertion: PublicKeyCredential | null = null;
+    try {
+      assertion = await runAuthentication(true);
+    } catch (firstErr: any) {
+      if (firstErr?.name === 'NotAllowedError') {
+        throw firstErr;
+      }
+      // 容错降级：不指定 credentialId 列表，由系统自动匹配
+      assertion = await runAuthentication(false);
+    }
 
     if (!assertion) {
       return { success: false, error: '生物识别验证未完成' };
@@ -188,9 +271,9 @@ export async function authenticateWithBiometrics(
     return { success: true };
   } catch (err: any) {
     console.error('Biometric auth error:', err);
-    if (err.name === 'NotAllowedError') {
-      return { success: false, error: '生物识别已取消或验证超时' };
-    }
-    return { success: false, error: err.message || '生物识别验证失败' };
+    return {
+      success: false,
+      error: formatWebAuthnError(err),
+    };
   }
 }
