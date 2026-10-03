@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
+  ArrowDownRight,
+  ArrowUpRight,
   Calendar,
   CreditCard,
   Download,
@@ -26,6 +28,25 @@ interface ExpensesViewProps {
   onDeleteExpense: (id: string) => void;
   hidePrivacy: boolean;
 }
+
+export const RELATION_BENEFICIARY_PRESETS = [
+  {
+    group: '亲属家族',
+    items: ['亲朋好友', '父母长辈', '公婆岳父母', '叔伯姑姨', '舅父舅母', '表哥表姐', '堂兄弟姐妹', '晚辈侄甥', '家族长辈'],
+  },
+  {
+    group: '朋友同窗发小',
+    items: ['挚友闺蜜', '大学同窗', '高中同学', '初中同学', '发小老乡', '普通朋友'],
+  },
+  {
+    group: '职场与商务伙伴',
+    items: ['部门同事', '直属领导', '公司老板', '商业合作伙伴', '大客户经理', '已离职前同事'],
+  },
+  {
+    group: '师长邻里后辈',
+    items: ['恩师导师', '邻里街坊', '学生后辈', '其他往来对象'],
+  },
+];
 
 export const LIVING_CATEGORIES = [
   '餐饮美食',
@@ -102,11 +123,13 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [giftDirectionFilter, setGiftDirectionFilter] = useState<'all' | 'out' | 'in'>('all');
 
   // Form State
   const [formData, setFormData] = useState<{
     date: string;
     type: ExpenseType;
+    direction: 'out' | 'in';
     category: string;
     amount: number | '';
     payer: string;
@@ -116,6 +139,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   }>({
     date: new Date().toISOString().slice(0, 10),
     type: 'living',
+    direction: 'out',
     category: '餐饮美食',
     amount: '',
     payer: '本人',
@@ -123,6 +147,17 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     beneficiary: '全家',
     remarks: '',
   });
+
+  // 提取历史人情往来随礼对象/关系人列表，供快速下拉复用
+  const frequentGiftContacts = useMemo(() => {
+    const set = new Set<string>();
+    expenses.forEach((e) => {
+      if (e.beneficiary && e.beneficiary.trim()) {
+        set.add(e.beneficiary.trim());
+      }
+    });
+    return Array.from(set).slice(0, 30);
+  }, [expenses]);
 
   // Available months
   const availableMonths = useMemo(() => {
@@ -138,6 +173,10 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const filteredExpenses = useMemo(() => {
     return expenses.filter((e) => {
       if (selectedType !== 'all' && e.type !== selectedType) return false;
+      if (selectedType === 'gift' && giftDirectionFilter !== 'all') {
+        const dir = e.direction || 'out';
+        if (dir !== giftDirectionFilter) return false;
+      }
       if (selectedMonth !== 'all' && !e.date.startsWith(selectedMonth)) return false;
       if (selectedCategory !== 'all' && e.category !== selectedCategory) return false;
       if (searchQuery.trim()) {
@@ -150,7 +189,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       }
       return true;
     });
-  }, [expenses, selectedType, selectedMonth, selectedCategory, searchQuery]);
+  }, [expenses, selectedType, giftDirectionFilter, selectedMonth, selectedCategory, searchQuery]);
 
   // Metric stats
   const stats = useMemo(() => {
@@ -161,44 +200,65 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     const curMonthMedical = curMonthExpenses
       .filter((e) => e.type === 'medical')
       .reduce((s, e) => s + e.amount, 0);
-    const curMonthGift = curMonthExpenses
-      .filter((e) => e.type === 'gift')
+
+    // 人情往来：区分随礼支出 (out) 与 收礼收入 (in)
+    const curMonthGiftOut = curMonthExpenses
+      .filter((e) => e.type === 'gift' && e.direction !== 'in')
       .reduce((s, e) => s + e.amount, 0);
+    const curMonthGiftIn = curMonthExpenses
+      .filter((e) => e.type === 'gift' && e.direction === 'in')
+      .reduce((s, e) => s + e.amount, 0);
+    const curMonthGiftNet = curMonthGiftIn - curMonthGiftOut;
+
     const curMonthEdu = curMonthExpenses
       .filter((e) => e.type === 'education')
       .reduce((s, e) => s + e.amount, 0);
     const curMonthTravel = curMonthExpenses
       .filter((e) => e.type === 'travel')
       .reduce((s, e) => s + e.amount, 0);
-    const curMonthTotal = curMonthLiving + curMonthMedical + curMonthGift + curMonthEdu + curMonthTravel;
+
+    // 本月实际总开销 (不叠加收礼收入)
+    const curMonthTotal = curMonthLiving + curMonthMedical + curMonthGiftOut + curMonthEdu + curMonthTravel;
 
     const currentYear = new Date().getFullYear().toString();
     const curYearExpenses = expenses.filter((e) => e.date.startsWith(currentYear));
-    const curYearTotal = curYearExpenses.reduce((s, e) => s + e.amount, 0);
     const curYearMedical = curYearExpenses
       .filter((e) => e.type === 'medical')
       .reduce((s, e) => s + e.amount, 0);
-    const curYearGift = curYearExpenses
-      .filter((e) => e.type === 'gift')
+    const curYearGiftOut = curYearExpenses
+      .filter((e) => e.type === 'gift' && e.direction !== 'in')
       .reduce((s, e) => s + e.amount, 0);
+    const curYearGiftIn = curYearExpenses
+      .filter((e) => e.type === 'gift' && e.direction === 'in')
+      .reduce((s, e) => s + e.amount, 0);
+    const curYearGiftNet = curYearGiftIn - curYearGiftOut;
     const curYearTravel = curYearExpenses
       .filter((e) => e.type === 'travel')
+      .reduce((s, e) => s + e.amount, 0);
+    const curYearTotal = curYearExpenses
+      .filter((e) => !(e.type === 'gift' && e.direction === 'in'))
       .reduce((s, e) => s + e.amount, 0);
 
     return {
       curMonthTotal,
       curMonthLiving,
       curMonthMedical,
-      curMonthGift,
+      curMonthGift: curMonthGiftOut,
+      curMonthGiftOut,
+      curMonthGiftIn,
+      curMonthGiftNet,
       curMonthEdu,
       curMonthTravel,
       curYearTotal,
       curYearMedical,
-      curYearGift,
+      curYearGift: curYearGiftOut,
+      curYearGiftOut,
+      curYearGiftIn,
+      curYearGiftNet,
       curYearTravel,
       curMonthLivingRatio: curMonthTotal > 0 ? Math.round((curMonthLiving / curMonthTotal) * 100) : 0,
       curMonthMedicalRatio: curMonthTotal > 0 ? Math.round((curMonthMedical / curMonthTotal) * 100) : 0,
-      curMonthGiftRatio: curMonthTotal > 0 ? Math.round((curMonthGift / curMonthTotal) * 100) : 0,
+      curMonthGiftRatio: curMonthTotal > 0 ? Math.round((curMonthGiftOut / curMonthTotal) * 100) : 0,
     };
   }, [expenses, currentMonthStr]);
 
@@ -219,10 +279,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     }));
     list.sort((a, b) => b.total - a.total);
     const totalFiltered = filteredExpenses.reduce((s, e) => s + e.amount, 0);
+    const totalFilteredExpense = filteredExpenses
+      .filter((e) => !(e.type === 'gift' && e.direction === 'in'))
+      .reduce((s, e) => s + e.amount, 0);
+    const totalFilteredIncome = filteredExpenses
+      .filter((e) => e.type === 'gift' && e.direction === 'in')
+      .reduce((s, e) => s + e.amount, 0);
 
     return {
       list,
       totalFiltered,
+      totalFilteredExpense,
+      totalFilteredIncome,
     };
   }, [filteredExpenses]);
 
@@ -248,6 +316,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     setFormData({
       date: new Date().toISOString().slice(0, 10),
       type: defaultType,
+      direction: 'out',
       category: defaultCat,
       amount: '',
       payer: '本人',
@@ -264,6 +333,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     setFormData({
       date: record.date,
       type: record.type,
+      direction: record.direction || 'out',
       category: record.category,
       amount: record.amount,
       payer: record.payer || '本人',
@@ -278,7 +348,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.amount || Number(formData.amount) <= 0) {
-      alert('请输入有效的支出金额');
+      alert(formData.type === 'gift' && formData.direction === 'in' ? '请输入有效的收礼金额' : '请输入有效的支出金额');
       return;
     }
 
@@ -286,11 +356,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       id: editingId || `exp-${Date.now()}`,
       date: formData.date,
       type: formData.type,
+      direction: formData.type === 'gift' ? formData.direction : 'out',
       category: formData.category,
       amount: Number(formData.amount),
       payer: formData.payer,
       paymentMethod: formData.paymentMethod,
-      beneficiary: formData.beneficiary,
+      beneficiary: formData.beneficiary.trim(),
       remarks: formData.remarks.trim(),
       createdAt: editingId ? undefined! : new Date().toISOString(),
     };
@@ -438,14 +509,14 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
         <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
           <div className="flex items-center justify-between text-zinc-400 dark:text-zinc-500 mb-1.5">
-            <span className="text-xs font-medium">人情往来随礼</span>
+            <span className="text-xs font-medium">人情往来 (随礼/收礼)</span>
             <Gift className="w-4 h-4 text-pink-500" />
           </div>
           <div className="text-lg sm:text-xl font-bold font-mono tracking-tight text-zinc-900 dark:text-zinc-100">
-            {hidePrivacy ? '••••••' : formatCurrency(stats.curMonthGift)}
+            {hidePrivacy ? '••••••' : formatCurrency(stats.curMonthGiftOut)}
           </div>
           <p className="text-[11px] text-zinc-400 mt-1 truncate">
-            本月占比 {stats.curMonthGiftRatio}% · 本年 {hidePrivacy ? '•••' : formatCurrency(stats.curYearGift)}
+            支出 ¥{hidePrivacy ? '••' : stats.curMonthGiftOut} · 收到 ¥{hidePrivacy ? '••' : stats.curMonthGiftIn} · 差额 {stats.curMonthGiftNet >= 0 ? '+' : ''}{hidePrivacy ? '••' : stats.curMonthGiftNet}
           </p>
         </div>
 
@@ -565,6 +636,47 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             </button>
           </div>
 
+          {/* 人情往来收支细分子筛选 */}
+          {selectedType === 'gift' && (
+            <div className="flex items-center gap-1 bg-zinc-100 dark:bg-zinc-800/80 p-1 rounded-xl">
+              <button
+                type="button"
+                onClick={() => setGiftDirectionFilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
+                  giftDirectionFilter === 'all'
+                    ? 'bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white shadow-xs font-semibold'
+                    : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                全部往来 ({expenses.filter((e) => e.type === 'gift').length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGiftDirectionFilter('out')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer ${
+                  giftDirectionFilter === 'out'
+                    ? 'bg-rose-500 text-white shadow-xs font-semibold'
+                    : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                <ArrowUpRight className="w-3 h-3" />
+                <span>随礼支出 ({expenses.filter((e) => e.type === 'gift' && e.direction !== 'in').length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setGiftDirectionFilter('in')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer ${
+                  giftDirectionFilter === 'in'
+                    ? 'bg-emerald-600 text-white shadow-xs font-semibold'
+                    : 'text-zinc-500 hover:text-zinc-900 dark:hover:text-white'
+                }`}
+              >
+                <ArrowDownRight className="w-3 h-3" />
+                <span>收礼收入 ({expenses.filter((e) => e.type === 'gift' && e.direction === 'in').length})</span>
+              </button>
+            </div>
+          )}
+
           {/* 月份筛选器 */}
           {availableMonths.length > 0 && (
             <select
@@ -642,8 +754,16 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       {/* 支出流水列表 (采用与薪资工时、人情往来完全一致的精美卡片样式) */}
       <div className="space-y-3">
         <div className="flex items-center justify-between text-xs text-zinc-400">
-          <span>共找到 {filteredExpenses.length} 笔支出流水</span>
-          <span>当前列表合计: {hidePrivacy ? '••••••' : formatCurrency(categoryStats.totalFiltered)}</span>
+          <span>共找到 {filteredExpenses.length} 笔往来明细</span>
+          <span>
+            {categoryStats.totalFilteredIncome > 0 ? (
+              <span>
+                支出合计: {hidePrivacy ? '••••' : `¥${formatCurrency(categoryStats.totalFilteredExpense)}`} · 收礼入账: {hidePrivacy ? '••••' : `+¥${formatCurrency(categoryStats.totalFilteredIncome)}`}
+              </span>
+            ) : (
+              <span>当前列表合计: {hidePrivacy ? '••••••' : formatCurrency(categoryStats.totalFiltered)}</span>
+            )}
+          </span>
         </div>
 
         {filteredExpenses.length === 0 ? (
@@ -680,11 +800,26 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       <span className="font-bold text-zinc-900 dark:text-zinc-100 text-sm">
                         {row.category}
                       </span>
-                      <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${meta.badgeClass}`}>
-                        {meta.label}
-                      </span>
+                      {row.type === 'gift' ? (
+                        row.direction === 'in' ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 flex items-center gap-0.5">
+                            <ArrowDownRight className="w-3 h-3 text-emerald-500" />
+                            <span>收礼入账</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60 flex items-center gap-0.5">
+                            <ArrowUpRight className="w-3 h-3 text-rose-500" />
+                            <span>随礼支出</span>
+                          </span>
+                        )
+                      ) : (
+                        <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${meta.badgeClass}`}>
+                          {meta.label}
+                        </span>
+                      )}
                       {row.beneficiary && (
                         <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
+                          {row.type === 'gift' && (row.direction === 'in' ? '来自: ' : '随给: ')}
                           {row.beneficiary}
                         </span>
                       )}
@@ -694,18 +829,30 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                       <span className="font-mono">{row.date}</span>
                       <span>·</span>
                       <span>{row.paymentMethod || '微信支付'}</span>
-                      {row.payer && <span>({row.payer})</span>}
+                      {row.payer && <span>({row.type === 'gift' && row.direction === 'in' ? '入账: ' : ''}{row.payer})</span>}
                       {row.remarks && <span className="text-zinc-600 dark:text-zinc-400">· {row.remarks}</span>}
                     </div>
                   </div>
                 </div>
 
-                {/* 右侧：支出金额与操作按键 */}
+                {/* 右侧：支出/收入金额与操作按键 */}
                 <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-zinc-100 dark:border-zinc-800">
                   <div className="text-right">
-                    <span className="text-[10px] text-zinc-400 block">支出金额</span>
-                    <span className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-                      {hidePrivacy ? '••••' : formatCurrency(row.amount)}
+                    <span className="text-[10px] text-zinc-400 block">
+                      {row.type === 'gift' && row.direction === 'in' ? '收礼金额' : '支出金额'}
+                    </span>
+                    <span
+                      className={`font-mono font-bold text-sm sm:text-base ${
+                        row.type === 'gift' && row.direction === 'in'
+                          ? 'text-emerald-600 dark:text-emerald-400'
+                          : 'text-zinc-900 dark:text-zinc-100'
+                      }`}
+                    >
+                      {hidePrivacy
+                        ? '••••'
+                        : `${row.type === 'gift' && row.direction === 'in' ? '+' : '-'}¥${formatCurrency(
+                            row.amount
+                          )}`}
                     </span>
                   </div>
 
@@ -903,11 +1050,52 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
               </div>
 
+              {/* 人情往来方向切换 (随礼支出 vs 收受礼金) */}
+              {formData.type === 'gift' && (
+                <div className="p-3 rounded-2xl bg-pink-50/70 dark:bg-pink-950/30 border border-pink-200/80 dark:border-pink-900/60 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-pink-900 dark:text-pink-200 flex items-center gap-1.5">
+                      <Gift className="w-4 h-4 text-pink-500" />
+                      <span>人情往来资金属性</span>
+                    </span>
+                    <span className="text-[11px] text-pink-600 dark:text-pink-400 font-medium">
+                      {formData.direction === 'in' ? '收到随礼 (计入人情收入)' : '随礼支出 (送出红包/礼金)'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, direction: 'out' })}
+                      className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        formData.direction !== 'in'
+                          ? 'bg-rose-500 text-white border-rose-500 shadow-xs'
+                          : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-rose-300'
+                      }`}
+                    >
+                      <ArrowUpRight className="w-3.5 h-3.5" />
+                      <span>随礼支出 (送出礼金)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, direction: 'in' })}
+                      className={`py-2 px-3 rounded-xl border text-xs font-semibold flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                        formData.direction === 'in'
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-emerald-300'
+                      }`}
+                    >
+                      <ArrowDownRight className="w-3.5 h-3.5" />
+                      <span>收礼收入 (收受礼金)</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* 日期与金额 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                    支出日期
+                    {formData.type === 'gift' && formData.direction === 'in' ? '收礼日期' : '支出日期'}
                   </label>
                   <input
                     type="date"
@@ -920,7 +1108,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                    支出金额 (元)
+                    {formData.type === 'gift' && formData.direction === 'in' ? '收礼金额 (元)' : '支出金额 (元)'}
                   </label>
                   <input
                     type="number"
@@ -975,11 +1163,11 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </div>
               </div>
 
-              {/* 出资人、支付方式与受益对象/关系人 */}
-              <div className="grid grid-cols-3 gap-3">
+              {/* 出资人/收款人、支付方式与受益对象/关系人 */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                    出资人员
+                    {formData.type === 'gift' && formData.direction === 'in' ? '收款入账人' : '出资人员'}
                   </label>
                   <select
                     value={formData.payer}
@@ -995,47 +1183,131 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
                 <div>
                   <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                    支付渠道
+                    {formData.type === 'gift' && formData.direction === 'in' ? '收款渠道' : '支付渠道'}
                   </label>
                   <select
                     value={formData.paymentMethod}
                     onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
                     className="w-full px-2.5 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-hidden"
                   >
-                    <option value="微信支付">微信支付</option>
+                    <option value="微信支付">微信支付/红包</option>
                     <option value="支付宝">支付宝</option>
-                    <option value="医保统筹/个账">医保统筹/个账</option>
-                    <option value="银行卡">储蓄卡/银行卡</option>
+                    <option value="现金礼金">现金/纸质红包</option>
+                    <option value="银行转账">银行卡/转账</option>
                     <option value="信用卡">信用卡</option>
-                    <option value="现金">现金</option>
+                    <option value="医保统筹/个账">医保统筹/个账</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1 truncate">
-                    {formData.type === 'medical'
-                      ? '就医对象/患者'
-                      : formData.type === 'gift'
-                      ? '关系人/随礼对象'
-                      : formData.type === 'travel'
-                      ? '行程/目的地'
-                      : '受益对象'}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={
-                      formData.type === 'medical'
-                        ? '如: 本人/父母/宝宝'
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-zinc-700 dark:text-zinc-300 font-medium truncate">
+                      {formData.type === 'medical'
+                        ? '就医对象/患者'
                         : formData.type === 'gift'
-                        ? '如: 李雷/表哥/张总'
+                        ? formData.direction === 'in'
+                          ? '送礼人 / 关系对象'
+                          : '随礼对象 / 关系人'
                         : formData.type === 'travel'
-                        ? '如: 云南大理/三亚游'
-                        : '如: 大宝/全家'
-                    }
-                    value={formData.beneficiary}
-                    onChange={(e) => setFormData({ ...formData, beneficiary: e.target.value })}
-                    className="w-full px-2.5 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-hidden"
-                  />
+                        ? '行程/目的地'
+                        : '受益对象'}
+                    </label>
+                  </div>
+
+                  {formData.type === 'gift' ? (
+                    <div className="space-y-1.5">
+                      <select
+                        value={
+                          RELATION_BENEFICIARY_PRESETS.some((g) => g.items.includes(formData.beneficiary)) ||
+                          frequentGiftContacts.includes(formData.beneficiary)
+                            ? formData.beneficiary
+                            : formData.beneficiary
+                            ? '__custom__'
+                            : ''
+                        }
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (val === '__custom__') {
+                            // 用户准备手动输入
+                          } else if (val) {
+                            setFormData({ ...formData, beneficiary: val });
+                          }
+                        }}
+                        className="w-full px-2.5 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-xs font-medium cursor-pointer"
+                      >
+                        <option value="">
+                          {formData.direction === 'in' ? '-- 下拉选择送礼人/关系人 --' : '-- 下拉选择随礼对象/关系人 --'}
+                        </option>
+                        {frequentGiftContacts.length > 0 && (
+                          <optgroup label="曾记录的往来对象">
+                            {frequentGiftContacts.map((contact) => (
+                              <option key={contact} value={contact}>
+                                {contact}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {RELATION_BENEFICIARY_PRESETS.map((grp) => (
+                          <optgroup key={grp.group} label={grp.group}>
+                            {grp.items.map((item) => (
+                              <option key={item} value={item}>
+                                {item}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                        <option value="__custom__">-- 手动输入其他姓名/关系 --</option>
+                      </select>
+
+                      <input
+                        type="text"
+                        list="gift-beneficiary-datalist"
+                        placeholder={formData.direction === 'in' ? '或手动输入送礼人姓名/昵称...' : '或手动输入随礼对象姓名/昵称...'}
+                        value={formData.beneficiary}
+                        onChange={(e) => setFormData({ ...formData, beneficiary: e.target.value })}
+                        className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-hidden"
+                      />
+                      <datalist id="gift-beneficiary-datalist">
+                        {frequentGiftContacts.map((c) => (
+                          <option key={c} value={c} />
+                        ))}
+                        {RELATION_BENEFICIARY_PRESETS.flatMap((g) => g.items).map((item) => (
+                          <option key={item} value={item} />
+                        ))}
+                      </datalist>
+
+                      <div className="flex flex-wrap gap-1">
+                        {['亲朋好友', '父母长辈', '公婆岳父母', '表哥表姐', '大学同窗', '部门同事', '挚友闺蜜', '直属领导'].map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, beneficiary: tag })}
+                            className={`text-[10px] px-1.5 py-0.5 rounded-md border transition-all cursor-pointer ${
+                              formData.beneficiary === tag
+                                ? 'bg-pink-600 text-white border-pink-600 font-medium shadow-xs'
+                                : 'bg-zinc-100/80 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-700 hover:text-zinc-900'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      placeholder={
+                        formData.type === 'medical'
+                          ? '如: 本人/父母/宝宝'
+                          : formData.type === 'travel'
+                          ? '如: 云南大理/三亚游'
+                          : '如: 大宝/全家'
+                      }
+                      value={formData.beneficiary}
+                      onChange={(e) => setFormData({ ...formData, beneficiary: e.target.value })}
+                      className="w-full px-2.5 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 focus:outline-hidden"
+                    />
+                  )}
                 </div>
               </div>
 

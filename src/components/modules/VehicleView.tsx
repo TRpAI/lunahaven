@@ -25,6 +25,32 @@ import { exportFuelsToCsv, exportMaintenancesToCsv, triggerFileDownload } from '
 import { getVehicleHealthStatus } from '../../utils/fuelCalculator';
 import { formatCurrency } from '../../utils/taxCalculator';
 
+export const FUEL_TYPE_OPTIONS = [
+  {
+    group: '汽油标号',
+    options: ['92# 汽油', '95# 汽油', '98# 汽油', '101# 顶级汽油', '乙醇汽油 E92', '乙醇汽油 E95'],
+  },
+  {
+    group: '柴油标号',
+    options: ['0# 柴油', '-10# 柴油', '-20# 柴油', '-35# 柴油'],
+  },
+  {
+    group: '电力补能',
+    options: [
+      '快充直流电 (kWh)',
+      '慢充交流电 (kWh)',
+      '家用充电桩 (谷电)',
+      '家用充电桩 (平峰电)',
+      '品牌自建超充 (特斯拉/小鹏/蔚来)',
+      '第三方公共快充 (特来电/星星/快电)',
+    ],
+  },
+  {
+    group: '其他能源',
+    options: ['换电服务', 'CNG 压缩天然气', 'LNG 液化天然气', '氢燃料 (kg)', '其他自定义'],
+  },
+];
+
 interface VehicleViewProps {
   vehicles: VehicleProfile[];
   fuels: FuelRecord[];
@@ -102,7 +128,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     totalCost: currentVehicle?.fuelType === 'electric' ? 67.5 : 334.0,
     isFullTank: true,
     station: currentVehicle?.fuelType === 'electric' ? '特来电超充站' : '中国石化',
-    fuelType: currentVehicle?.fuelType === 'electric' ? '快充 (kWh)' : '95# 汽油',
+    fuelType: currentVehicle?.fuelType === 'electric' ? '快充直流电 (kWh)' : '95# 汽油',
     notes: '',
   });
 
@@ -154,15 +180,39 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
       return;
     }
     setEditingFuelId(null);
+    let defaultFuel = '95# 汽油';
+    let defaultPrice = 8.35;
+    let defaultAmount = 40;
+    let defaultStation = '中国石化';
+
+    if (currentVehicle?.fuelType === 'electric') {
+      defaultFuel = '快充直流电 (kWh)';
+      defaultPrice = 1.35;
+      defaultAmount = 50;
+      defaultStation = '特来电超充站';
+    } else if (currentVehicle?.fuelType === 'gasoline_92') {
+      defaultFuel = '92# 汽油';
+      defaultPrice = 7.85;
+      defaultAmount = 42;
+    } else if (currentVehicle?.fuelType === 'gasoline_98') {
+      defaultFuel = '98# 汽油';
+      defaultPrice = 9.45;
+      defaultAmount = 45;
+    } else if (currentVehicle?.fuelType === 'diesel') {
+      defaultFuel = '0# 柴油';
+      defaultPrice = 7.55;
+      defaultAmount = 48;
+    }
+
     setFuelForm({
       date: new Date().toISOString().slice(0, 10),
       odometer: latestFuelOdo > 0 ? latestFuelOdo + 350 : (currentVehicle?.initialOdometer || 0),
-      fuelAmount: currentVehicle?.fuelType === 'electric' ? 50 : 40,
-      unitPrice: currentVehicle?.fuelType === 'electric' ? 1.35 : 8.35,
-      totalCost: currentVehicle?.fuelType === 'electric' ? 67.5 : 334.0,
+      fuelAmount: defaultAmount,
+      unitPrice: defaultPrice,
+      totalCost: Number((defaultAmount * defaultPrice).toFixed(2)),
       isFullTank: true,
-      station: currentVehicle?.fuelType === 'electric' ? '特来电超充站' : '中国石化',
-      fuelType: currentVehicle?.fuelType === 'electric' ? '快充 (kWh)' : '95# 汽油',
+      station: defaultStation,
+      fuelType: defaultFuel,
       notes: '',
     });
     setIsFuelModalOpen(true);
@@ -1017,14 +1067,124 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">标号类型</label>
-                  <input
-                    type="text"
-                    placeholder="如: 95# 汽油 / 快充"
-                    value={fuelForm.fuelType}
-                    onChange={(e) => setFuelForm({ ...fuelForm, fuelType: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
+                      补能标号类型
+                    </label>
+                    <span className="text-[10px] text-zinc-400">
+                      支持下拉切换 / 自定义
+                    </span>
+                  </div>
+                  <select
+                    value={
+                      FUEL_TYPE_OPTIONS.some((g) => g.options.includes(fuelForm.fuelType))
+                        ? fuelForm.fuelType
+                        : '其他自定义'
+                    }
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === '其他自定义') {
+                        setFuelForm({ ...fuelForm, fuelType: '' });
+                      } else {
+                        let newPrice = fuelForm.unitPrice;
+                        let newStation = fuelForm.station;
+                        if (val.includes('92#')) {
+                          newPrice = 7.85;
+                          if (!newStation || newStation.includes('电')) newStation = '中国石化';
+                        } else if (val.includes('95#')) {
+                          newPrice = 8.35;
+                          if (!newStation || newStation.includes('电')) newStation = '中国石化';
+                        } else if (val.includes('98#')) {
+                          newPrice = 9.45;
+                          if (!newStation || newStation.includes('电')) newStation = '中国石化';
+                        } else if (val.includes('柴油')) {
+                          newPrice = 7.55;
+                          if (!newStation || newStation.includes('电')) newStation = '中国石化';
+                        } else if (val.includes('谷电')) {
+                          newPrice = 0.38;
+                          newStation = '家用充电桩';
+                        } else if (val.includes('快充') || val.includes('超充')) {
+                          newPrice = 1.35;
+                          if (!newStation || newStation.includes('石化') || newStation.includes('石油')) {
+                            newStation = '特来电超充站';
+                          }
+                        } else if (val.includes('慢充')) {
+                          newPrice = 1.10;
+                        }
+                        const total = Number((fuelForm.fuelAmount * newPrice).toFixed(2));
+                        setFuelForm({
+                          ...fuelForm,
+                          fuelType: val,
+                          unitPrice: newPrice,
+                          totalCost: total > 0 ? total : fuelForm.totalCost,
+                          station: newStation,
+                        });
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-medium cursor-pointer"
+                  >
+                    {FUEL_TYPE_OPTIONS.map((group) => (
+                      <optgroup key={group.group} label={group.group}>
+                        {group.options.map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+
+                  {(!FUEL_TYPE_OPTIONS.some((g) => g.options.includes(fuelForm.fuelType)) ||
+                    fuelForm.fuelType === '其他自定义' ||
+                    fuelForm.fuelType === '') && (
+                    <div className="mt-1.5">
+                      <input
+                        type="text"
+                        placeholder="输入自定义标号或规格 (如: 100# 赛车油 / 氢能)..."
+                        value={fuelForm.fuelType === '其他自定义' ? '' : fuelForm.fuelType}
+                        onChange={(e) => setFuelForm({ ...fuelForm, fuelType: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                        autoFocus
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {(currentVehicle?.fuelType === 'electric'
+                      ? ['快充直流电 (kWh)', '慢充交流电 (kWh)', '家用充电桩 (谷电)']
+                      : currentVehicle?.fuelType === 'diesel'
+                      ? ['0# 柴油', '-10# 柴油']
+                      : ['92# 汽油', '95# 汽油', '98# 汽油', '快充直流电 (kWh)']
+                    ).map((quickOpt) => (
+                      <button
+                        key={quickOpt}
+                        type="button"
+                        onClick={() => {
+                          let newPrice = fuelForm.unitPrice;
+                          if (quickOpt.includes('92#')) newPrice = 7.85;
+                          else if (quickOpt.includes('95#')) newPrice = 8.35;
+                          else if (quickOpt.includes('98#')) newPrice = 9.45;
+                          else if (quickOpt.includes('柴油')) newPrice = 7.55;
+                          else if (quickOpt.includes('谷电')) newPrice = 0.38;
+                          else if (quickOpt.includes('快充')) newPrice = 1.35;
+                          const total = Number((fuelForm.fuelAmount * newPrice).toFixed(2));
+                          setFuelForm({
+                            ...fuelForm,
+                            fuelType: quickOpt,
+                            unitPrice: newPrice,
+                            totalCost: total > 0 ? total : fuelForm.totalCost,
+                          });
+                        }}
+                        className={`text-[10px] px-2 py-0.5 rounded-md border transition-all cursor-pointer ${
+                          fuelForm.fuelType === quickOpt
+                            ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 border-transparent font-medium shadow-xs'
+                            : 'bg-zinc-100/80 dark:bg-zinc-800 text-zinc-500 border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-200'
+                        }`}
+                      >
+                        {quickOpt.replace(' (kWh)', '')}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
 

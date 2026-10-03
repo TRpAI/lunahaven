@@ -56,6 +56,17 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
     notes: '',
   });
 
+  // 提取历史随礼对象/关系人列表供下拉选择
+  const frequentGiftContacts = useMemo(() => {
+    const set = new Set<string>();
+    gifts.forEach((g) => {
+      if (g.personName && g.personName.trim()) {
+        set.add(g.personName.trim());
+      }
+    });
+    return Array.from(set).slice(0, 30);
+  }, [gifts]);
+
   const relationLabels: Record<GiftRelation, string> = {
     relative: '亲戚长辈',
     friend: '朋友挚友',
@@ -441,15 +452,61 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
               {/* 姓名与日期 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">对方姓名 / 关系人</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="如: 李雷 / 王叔"
-                    value={formData.personName}
-                    onChange={(e) => setFormData({ ...formData, personName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
+                      {formData.direction === 'in' ? '送礼人 / 关系对象' : '随礼对象 / 关系人'}
+                    </label>
+                    <span className="text-[10px] text-zinc-400">支持下拉选择</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <select
+                      value={
+                        frequentGiftContacts.includes(formData.personName) ||
+                        ['父母长辈', '公婆岳父母', '叔伯姑姨', '舅父舅母', '表哥表姐', '大学同窗', '高中同学', '部门同事', '直属领导', '挚友闺蜜'].includes(formData.personName)
+                          ? formData.personName
+                          : formData.personName
+                          ? '__custom__'
+                          : ''
+                      }
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val && val !== '__custom__') {
+                          setFormData({ ...formData, personName: val });
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-xs font-medium cursor-pointer"
+                    >
+                      <option value="">
+                        {formData.direction === 'in' ? '-- 下拉选择送礼人/关系人 --' : '-- 下拉选择随礼对象/关系人 --'}
+                      </option>
+                      {frequentGiftContacts.length > 0 && (
+                        <optgroup label="曾往来对象">
+                          {frequentGiftContacts.map((contact) => (
+                            <option key={contact} value={contact}>
+                              {contact}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label="常见亲友与同僚">
+                        {['父母长辈', '公婆岳父母', '叔伯姑姨', '舅父舅母', '表哥表姐', '大学同窗', '高中同学', '部门同事', '直属领导', '挚友闺蜜'].map((rel) => (
+                          <option key={rel} value={rel}>
+                            {rel}
+                          </option>
+                        ))}
+                      </optgroup>
+                      <option value="__custom__">-- 手动输入其他姓名 --</option>
+                    </select>
+
+                    <input
+                      type="text"
+                      required
+                      placeholder="或输入具体姓名/如: 李雷 / 王叔..."
+                      value={formData.personName}
+                      onChange={(e) => setFormData({ ...formData, personName: e.target.value })}
+                      className="w-full px-3 py-1.5 text-xs rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">发生日期</label>

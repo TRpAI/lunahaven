@@ -24,6 +24,58 @@ import { FiveInsuranceRates, OvertimeRecord, SalaryRecord } from '../../types';
 import { exportOvertimesToCsv, exportSalariesToCsv, triggerFileDownload } from '../../utils/exportImport';
 import { calculateSalaryBreakdown, formatCurrency } from '../../utils/taxCalculator';
 
+/**
+ * 根据开始时间和结束时间自动计算加班工时 (小时)
+ * 支持跨午夜 (例如 21:00 ~ 01:30 为 4.5小时)
+ */
+export interface OvertimeTimeDetails {
+  hours: number;
+  minutes: number;
+  formattedSpan: string;
+  isOvernight: boolean;
+}
+
+export function getOvertimeTimeDetails(startTime: string, endTime: string): OvertimeTimeDetails {
+  if (!startTime || !endTime) {
+    return { hours: 0, minutes: 0, formattedSpan: '0 小时', isOvernight: false };
+  }
+  const [shStr, smStr] = startTime.split(':');
+  const [ehStr, emStr] = endTime.split(':');
+  const sh = parseInt(shStr, 10);
+  const sm = parseInt(smStr, 10);
+  const eh = parseInt(ehStr, 10);
+  const em = parseInt(emStr, 10);
+
+  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) {
+    return { hours: 0, minutes: 0, formattedSpan: '0 小时', isOvernight: false };
+  }
+
+  const startTotalMinutes = sh * 60 + sm;
+  let endTotalMinutes = eh * 60 + em;
+
+  // 跨午夜处理 (例如从 22:00 加班到次日 02:00)
+  const isOvernight = endTotalMinutes < startTotalMinutes;
+  if (isOvernight) {
+    endTotalMinutes += 24 * 60;
+  }
+
+  const diffMinutes = endTotalMinutes - startTotalMinutes;
+  if (diffMinutes <= 0) {
+    return { hours: 0, minutes: 0, formattedSpan: '0 分钟', isOvernight: false };
+  }
+
+  const h = Math.floor(diffMinutes / 60);
+  const m = diffMinutes % 60;
+  const hours = Math.round((diffMinutes / 60) * 10) / 10;
+  const formattedSpan = m > 0 ? `${h}小时${m}分` : `${h}小时`;
+
+  return { hours, minutes: diffMinutes, formattedSpan, isOvernight };
+}
+
+export function calculateOvertimeDuration(startTime: string, endTime: string): number {
+  return getOvertimeTimeDetails(startTime, endTime).hours;
+}
+
 interface SalaryOvertimeViewProps {
   salaries: SalaryRecord[];
   onSaveSalary: (record: SalaryRecord) => void;
@@ -918,50 +970,193 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                 </div>
               </div>
 
+              {/* 开始与结束时间 (由开始时间和结束时间自动计算工时) */}
+              <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                      开始时间
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={overtimeForm.startTime}
+                      onChange={(e) => {
+                        const newStart = e.target.value;
+                        const details = getOvertimeTimeDetails(newStart, overtimeForm.endTime);
+                        setOvertimeForm({
+                          ...overtimeForm,
+                          startTime: newStart,
+                          durationHours: details.hours,
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                      结束时间
+                    </label>
+                    <input
+                      type="time"
+                      required
+                      value={overtimeForm.endTime}
+                      onChange={(e) => {
+                        const newEnd = e.target.value;
+                        const details = getOvertimeTimeDetails(overtimeForm.startTime, newEnd);
+                        setOvertimeForm({
+                          ...overtimeForm,
+                          endTime: newEnd,
+                          durationHours: details.hours,
+                        });
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    />
+                  </div>
+                </div>
+
+                {/* 常用加班班次快捷预设 (一键填入起止时间并自动计算工时) */}
+                <div className="flex flex-wrap items-center gap-1">
+                  <span className="text-[10px] text-zinc-400 mr-0.5">常用班次:</span>
+                  {[
+                    { label: '平日延时 (18:30~21:30)', start: '18:30', end: '21:30', hours: 3 },
+                    { label: '晚间深加班 (18:30~22:30)', start: '18:30', end: '22:30', hours: 4 },
+                    { label: '周末半天 (09:00~13:00)', start: '09:00', end: '13:00', hours: 4 },
+                    { label: '周末全天 (09:00~18:00)', start: '09:00', end: '18:00', hours: 8 },
+                    { label: '通宵夜班 (21:00~03:00)', start: '21:00', end: '03:00', hours: 6 },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setOvertimeForm({
+                          ...overtimeForm,
+                          startTime: preset.start,
+                          endTime: preset.end,
+                          durationHours: preset.hours,
+                        });
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 实时工时计算与跨夜检测卡片 */}
+                {(() => {
+                  const details = getOvertimeTimeDetails(overtimeForm.startTime, overtimeForm.endTime);
+                  return (
+                    <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/60 space-y-1 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-zinc-700 dark:text-zinc-300 font-medium flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-amber-500" />
+                          <span>
+                            时间跨度: {overtimeForm.startTime || '--:--'} 至 {overtimeForm.endTime || '--:--'} ({details.formattedSpan})
+                          </span>
+                        </span>
+                        {details.isOvernight && (
+                          <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-amber-200 dark:bg-amber-900/80 text-amber-900 dark:text-amber-200">
+                            🌙 次日跨午夜
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between text-[11px] font-mono text-zinc-600 dark:text-zinc-400">
+                        <span>
+                          系统已根据起止时间自动计算工时: <strong className="text-amber-700 dark:text-amber-400 font-bold">{details.hours} 小时</strong>
+                        </span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                          预计加班费: ¥{(Number(overtimeForm.durationHours) * Number(overtimeForm.hourlyRate) * Number(overtimeForm.multiplier)).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* 加班时长 (自动计算，支持手动微调) 与结算方式 */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">加班时长 (小时)</label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
+                      加班工时 (小时)
+                    </label>
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                      ⚡ 自动计算
+                    </span>
+                  </div>
                   <input
                     type="number"
-                    step="0.5"
+                    step="0.1"
+                    min="0"
                     required
                     value={overtimeForm.durationHours}
-                    onChange={(e) => setOvertimeForm({ ...overtimeForm, durationHours: Number(e.target.value) })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    onChange={(e) =>
+                      setOvertimeForm({ ...overtimeForm, durationHours: Number(e.target.value) })
+                    }
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-sm"
                   />
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOvertimeForm({
+                          ...overtimeForm,
+                          durationHours: Math.max(
+                            0,
+                            Number((overtimeForm.durationHours - 0.5).toFixed(1))
+                          ),
+                        })
+                      }
+                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 cursor-pointer"
+                    >
+                      -0.5h 晚餐
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOvertimeForm({
+                          ...overtimeForm,
+                          durationHours: Math.max(
+                            0,
+                            Number((overtimeForm.durationHours - 1.0).toFixed(1))
+                          ),
+                        })
+                      }
+                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 cursor-pointer"
+                    >
+                      -1h 休息
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const auto = calculateOvertimeDuration(
+                          overtimeForm.startTime,
+                          overtimeForm.endTime
+                        );
+                        setOvertimeForm({ ...overtimeForm, durationHours: auto });
+                      }}
+                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 cursor-pointer"
+                    >
+                      ⚡ 重新按起止计算
+                    </button>
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">结算方式</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                    结算方式
+                  </label>
                   <select
                     value={overtimeForm.settlementType}
-                    onChange={(e) => setOvertimeForm({ ...overtimeForm, settlementType: e.target.value as any })}
+                    onChange={(e) =>
+                      setOvertimeForm({ ...overtimeForm, settlementType: e.target.value as any })
+                    }
                     className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   >
                     <option value="paid">发放加班费</option>
                     <option value="comp_time">计入调休池</option>
                     <option value="pending">待结算</option>
                   </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">开始时间</label>
-                  <input
-                    type="time"
-                    value={overtimeForm.startTime}
-                    onChange={(e) => setOvertimeForm({ ...overtimeForm, startTime: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">结束时间</label>
-                  <input
-                    type="time"
-                    value={overtimeForm.endTime}
-                    onChange={(e) => setOvertimeForm({ ...overtimeForm, endTime: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
                 </div>
               </div>
 

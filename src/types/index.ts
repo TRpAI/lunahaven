@@ -100,10 +100,11 @@ export interface ExpenseRecord {
   date: string; // YYYY-MM-DD
   type: ExpenseType; // living: 日常生活 | medical: 医疗健康 | gift: 人情往来 | education: 教育专项 | travel: 旅行度假
   category: string; // 细分分类
-  amount: number; // 支出金额
-  payer?: string; // 支出人: 本人 / 配偶 / 家庭共同
+  amount: number; // 交易金额 (支出或收礼收入)
+  direction?: 'out' | 'in'; // 资金往来方向：'out' (支出/随礼送出，默认) | 'in' (收入/收受礼金)
+  payer?: string; // 支出人/收款人: 本人 / 配偶 / 家庭共同
   paymentMethod?: string; // 微信支付 / 支付宝 / 银行卡 / 现金
-  beneficiary?: string; // 受益对象 / 患者姓名 / 关系人 / 旅行目的地 (如: 本人 / 父母 / 大宝 / 李雷 / 云南大理)
+  beneficiary?: string; // 受益对象 / 患者姓名 / 关系人 / 随礼对象 / 旅行目的地
   remarks: string; // 明细备注
   createdAt: string;
   updatedAt?: string;
