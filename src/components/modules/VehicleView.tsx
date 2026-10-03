@@ -2,11 +2,13 @@ import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   Car,
+  Check,
   CheckCircle2,
   Download,
   Edit2,
   Fuel,
   Plus,
+  Settings2,
   Trash2,
   Wrench,
   X,
@@ -61,7 +63,10 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
   const [editingMaintId, setEditingMaintId] = useState<string | null>(null);
 
+  // 车辆档案管理与编辑/添加 Modal
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
+  const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
+  const [isVehicleListModalOpen, setIsVehicleListModalOpen] = useState(false);
 
   // Active Vehicle (若已清空则为 null，杜绝虚假默认车辆与假里程)
   const currentVehicle: VehicleProfile | null = useMemo(() => {
@@ -117,7 +122,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     notes: '',
   });
 
-  // 新增车辆表单
+  // 车辆档案表单
   const [vehicleForm, setVehicleForm] = useState({
     name: '',
     plateNumber: '',
@@ -145,19 +150,19 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
   const handleOpenAddFuel = () => {
     if (!currentVehicle) {
-      setIsVehicleModalOpen(true);
+      handleOpenAddVehicle();
       return;
     }
     setEditingFuelId(null);
     setFuelForm({
       date: new Date().toISOString().slice(0, 10),
-      odometer: latestFuelOdo > 0 ? latestFuelOdo + 350 : 25000,
-      fuelAmount: currentVehicle.fuelType === 'electric' ? 60 : 45,
-      unitPrice: currentVehicle.fuelType === 'electric' ? 1.35 : 8.35,
-      totalCost: currentVehicle.fuelType === 'electric' ? 81 : 375.75,
+      odometer: latestFuelOdo > 0 ? latestFuelOdo + 350 : (currentVehicle?.initialOdometer || 0),
+      fuelAmount: currentVehicle?.fuelType === 'electric' ? 50 : 40,
+      unitPrice: currentVehicle?.fuelType === 'electric' ? 1.35 : 8.35,
+      totalCost: currentVehicle?.fuelType === 'electric' ? 67.5 : 334.0,
       isFullTank: true,
-      station: currentVehicle.fuelType === 'electric' ? '国家电网超充站' : '中国石化',
-      fuelType: currentVehicle.fuelType === 'electric' ? '快充 (kWh)' : '95# 汽油',
+      station: currentVehicle?.fuelType === 'electric' ? '特来电超充站' : '中国石化',
+      fuelType: currentVehicle?.fuelType === 'electric' ? '快充 (kWh)' : '95# 汽油',
       notes: '',
     });
     setIsFuelModalOpen(true);
@@ -172,18 +177,161 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
       unitPrice: f.unitPrice,
       totalCost: f.totalCost,
       isFullTank: f.isFullTank,
-      station: f.station,
-      fuelType: f.fuelType,
-      notes: f.notes,
+      station: f.station || '',
+      fuelType: f.fuelType || '',
+      notes: f.notes || '',
     });
     setIsFuelModalOpen(true);
   };
 
-  const handleFuelSubmit = (e: React.FormEvent) => {
+  const handleOpenAddMaint = () => {
+    if (!currentVehicle) {
+      handleOpenAddVehicle();
+      return;
+    }
+    setEditingMaintId(null);
+    setMaintForm({
+      date: new Date().toISOString().slice(0, 10),
+      odometer: latestFuelOdo || 0,
+      category: 'routine',
+      title: '常规小保养 (机油机滤)',
+      itemsStr: '全合成机油4L, 品牌机油滤清器',
+      shopName: '途虎养车工场店',
+      partsCost: 360,
+      laborCost: 80,
+      totalCost: 440,
+      nextServiceOdometer: (latestFuelOdo || 0) + 10000,
+      nextServiceDate: '',
+      notes: '',
+    });
+    setIsMaintModalOpen(true);
+  };
+
+  const handleOpenEditMaint = (m: MaintenanceRecord) => {
+    setEditingMaintId(m.id);
+    setMaintForm({
+      date: m.date,
+      odometer: m.odometer,
+      category: m.category,
+      title: m.title,
+      itemsStr: (m.items || []).join(', '),
+      shopName: m.shopName || '',
+      partsCost: m.partsCost || 0,
+      laborCost: m.laborCost || 0,
+      totalCost: m.totalCost,
+      nextServiceOdometer: m.nextServiceOdometer || 0,
+      nextServiceDate: m.nextServiceDate || '',
+      notes: m.notes || '',
+    });
+    setIsMaintModalOpen(true);
+  };
+
+  // 打开添加车型弹窗
+  const handleOpenAddVehicle = () => {
+    setEditingVehicleId(null);
+    setVehicleForm({
+      name: '',
+      plateNumber: '',
+      fuelType: 'gasoline_95',
+      tankCapacity: 50,
+      initialOdometer: 0,
+      maintenanceIntervalKm: 10000,
+      maintenanceIntervalDays: 180,
+    });
+    setIsVehicleModalOpen(true);
+  };
+
+  // 打开编辑车型弹窗
+  const handleOpenEditVehicle = (v: VehicleProfile) => {
+    setEditingVehicleId(v.id);
+    setVehicleForm({
+      name: v.name,
+      plateNumber: v.plateNumber || '',
+      fuelType: v.fuelType,
+      tankCapacity: v.tankCapacity || 50,
+      initialOdometer: v.initialOdometer || 0,
+      maintenanceIntervalKm: v.maintenanceIntervalKm || 10000,
+      maintenanceIntervalDays: v.maintenanceIntervalDays || 180,
+    });
+    setIsVehicleModalOpen(true);
+  };
+
+  // 保存车型 (新建或修改)
+  const handleSaveVehicleProfile = (e: React.FormEvent) => {
+    e.preventDefault();
+    const isEdit = Boolean(editingVehicleId);
+
+    if (isEdit && editingVehicleId) {
+      const existing = vehicles.find((v) => v.id === editingVehicleId);
+      if (!existing) return;
+
+      const updatedVehicle: VehicleProfile = {
+        ...existing,
+        name: vehicleForm.name.trim() || '未命名车辆',
+        plateNumber: vehicleForm.plateNumber.trim(),
+        fuelType: vehicleForm.fuelType,
+        tankCapacity: Number(vehicleForm.tankCapacity) || 50,
+        initialOdometer: Number(vehicleForm.initialOdometer) || 0,
+        maintenanceIntervalKm: Number(vehicleForm.maintenanceIntervalKm) || 10000,
+        maintenanceIntervalDays: Number(vehicleForm.maintenanceIntervalDays) || 180,
+        updatedAt: new Date().toISOString(),
+      };
+      onSaveVehicle(updatedVehicle);
+    } else {
+      const newV: VehicleProfile = {
+        id: `v-${Date.now()}`,
+        name: vehicleForm.name.trim() || '新车',
+        plateNumber: vehicleForm.plateNumber.trim(),
+        fuelType: vehicleForm.fuelType,
+        tankCapacity: Number(vehicleForm.tankCapacity) || 50,
+        initialOdometer: Number(vehicleForm.initialOdometer) || 0,
+        currentOdometer: Number(vehicleForm.initialOdometer) || 0,
+        maintenanceIntervalKm: Number(vehicleForm.maintenanceIntervalKm) || 10000,
+        maintenanceIntervalDays: Number(vehicleForm.maintenanceIntervalDays) || 180,
+        createdAt: new Date().toISOString(),
+      };
+      onSaveVehicle(newV);
+      onChangeActiveVehicle(newV.id);
+    }
+
+    setIsVehicleModalOpen(false);
+  };
+
+  // 删除车型 (带安全确认与关联记录提示)
+  const handleDeleteVehicleAction = (vId: string, vName: string) => {
+    const fCount = fuels.filter((f) => f.vehicleId === vId).length;
+    const mCount = maintenances.filter((m) => m.vehicleId === vId).length;
+
+    const warningDetail =
+      fCount > 0 || mCount > 0
+        ? `\n⚠️ 该车型下包含 ${fCount} 笔补能记录与 ${mCount} 笔维保记录，删除车型将一并清除相关记录！`
+        : '';
+
+    const confirmed = window.confirm(
+      `确定要删除车型「${vName}」吗？${warningDetail}\n\n此操作不可撤销，是否确认删除？`
+    );
+
+    if (!confirmed) return;
+
+    onDeleteVehicle(vId);
+
+    // 如果删除的是当前激活车型，自动切换到剩余的第一辆车
+    const remaining = vehicles.filter((v) => v.id !== vId);
+    if (remaining.length > 0) {
+      onChangeActiveVehicle(remaining[0].id);
+    } else {
+      onChangeActiveVehicle('');
+    }
+
+    setIsVehicleModalOpen(false);
+  };
+
+  const handleSaveFuel = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentVehicle) return;
+
     const newRecord: FuelRecord = {
-      id: editingFuelId || `fuel-${Date.now()}`,
+      id: editingFuelId || `f-${Date.now()}`,
       vehicleId: currentVehicle.id,
       date: fuelForm.date,
       odometer: Number(fuelForm.odometer) || 0,
@@ -201,51 +349,10 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     setIsFuelModalOpen(false);
   };
 
-  const handleOpenAddMaint = () => {
-    if (!currentVehicle) {
-      setIsVehicleModalOpen(true);
-      return;
-    }
-    setEditingMaintId(null);
-    setMaintForm({
-      date: new Date().toISOString().slice(0, 10),
-      odometer: latestFuelOdo || 25000,
-      category: 'routine',
-      title: '常规小保养 (机油机滤)',
-      itemsStr: '全合成机油, 机油滤清器',
-      shopName: '途虎养车工场店',
-      partsCost: 360,
-      laborCost: 80,
-      totalCost: 440,
-      nextServiceOdometer: (latestFuelOdo || 25000) + 10000,
-      nextServiceDate: '',
-      notes: '',
-    });
-    setIsMaintModalOpen(true);
-  };
-
-  const handleOpenEditMaint = (m: MaintenanceRecord) => {
-    setEditingMaintId(m.id);
-    setMaintForm({
-      date: m.date,
-      odometer: m.odometer,
-      category: m.category,
-      title: m.title,
-      itemsStr: m.items ? m.items.join(', ') : '',
-      shopName: m.shopName,
-      partsCost: m.partsCost,
-      laborCost: m.laborCost,
-      totalCost: m.totalCost,
-      nextServiceOdometer: m.nextServiceOdometer || (m.odometer + 10000),
-      nextServiceDate: m.nextServiceDate || '',
-      notes: m.notes,
-    });
-    setIsMaintModalOpen(true);
-  };
-
-  const handleMaintSubmit = (e: React.FormEvent) => {
+  const handleSaveMaint = (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentVehicle) return;
+
     const items = maintForm.itemsStr
       ? maintForm.itemsStr.split(/[,，\n]/).map((i) => i.trim()).filter(Boolean)
       : [];
@@ -272,25 +379,6 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
     setIsMaintModalOpen(false);
   };
 
-  const handleCreateVehicle = (e: React.FormEvent) => {
-    e.preventDefault();
-    const newV: VehicleProfile = {
-      id: `v-${Date.now()}`,
-      name: vehicleForm.name.trim() || '新车',
-      plateNumber: vehicleForm.plateNumber.trim(),
-      fuelType: vehicleForm.fuelType,
-      tankCapacity: Number(vehicleForm.tankCapacity) || 50,
-      initialOdometer: Number(vehicleForm.initialOdometer) || 0,
-      currentOdometer: Number(vehicleForm.initialOdometer) || 0,
-      maintenanceIntervalKm: Number(vehicleForm.maintenanceIntervalKm) || 10000,
-      maintenanceIntervalDays: Number(vehicleForm.maintenanceIntervalDays) || 180,
-      createdAt: new Date().toISOString(),
-    };
-    onSaveVehicle(newV);
-    onChangeActiveVehicle(newV.id);
-    setIsVehicleModalOpen(false);
-  };
-
   if (!currentVehicle || !healthStatus) {
     return (
       <div className="space-y-6 animate-in fade-in duration-200">
@@ -305,7 +393,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
             </p>
           </div>
           <button
-            onClick={() => setIsVehicleModalOpen(true)}
+            onClick={handleOpenAddVehicle}
             className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" />
@@ -315,22 +403,22 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
         {/* 渲染添加车辆 Modal */}
         {isVehicleModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
             <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
               <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
                 <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                   <Car className="w-5 h-5 text-zinc-500" />
-                  <span>添加爱车档案</span>
+                  <span>{editingVehicleId ? '编辑车型档案' : '添加爱车档案'}</span>
                 </h3>
                 <button
                   onClick={() => setIsVehicleModalOpen(false)}
-                  className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white"
+                  className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleCreateVehicle} className="space-y-3.5">
+              <form onSubmit={handleSaveVehicleProfile} className="space-y-3.5">
                 <div>
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">车辆名称/型号</label>
                   <input
@@ -373,6 +461,17 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                      {vehicleForm.fuelType === 'electric' ? '电池容量 (kWh)' : '油箱容积 (L)'}
+                    </label>
+                    <input
+                      type="number"
+                      value={vehicleForm.tankCapacity}
+                      onChange={(e) => setVehicleForm({ ...vehicleForm, tankCapacity: parseFloat(e.target.value) || 50 })}
+                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    />
+                  </div>
+                  <div>
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">初始里程 (km)</label>
                     <input
                       type="number"
@@ -381,15 +480,16 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                       className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                     />
                   </div>
-                  <div>
-                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">保养周期里程 (km)</label>
-                    <input
-                      type="number"
-                      value={vehicleForm.maintenanceIntervalKm}
-                      onChange={(e) => setVehicleForm({ ...vehicleForm, maintenanceIntervalKm: parseFloat(e.target.value) || 10000 })}
-                      className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                    />
-                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">保养周期里程 (km)</label>
+                  <input
+                    type="number"
+                    value={vehicleForm.maintenanceIntervalKm}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, maintenanceIntervalKm: parseFloat(e.target.value) || 10000 })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                  />
                 </div>
 
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
@@ -404,7 +504,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     type="submit"
                     className="px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold shadow-xs cursor-pointer"
                   >
-                    创建车辆
+                    {editingVehicleId ? '保存修改' : '创建车辆'}
                   </button>
                 </div>
               </form>
@@ -440,7 +540,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
             <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
               汽车账本明细
             </h1>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
               <select
                 value={currentVehicle.id}
                 onChange={(e) => onChangeActiveVehicle(e.target.value)}
@@ -452,6 +552,34 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   </option>
                 ))}
               </select>
+
+              {/* 编辑当前车型按钮 */}
+              <button
+                onClick={() => handleOpenEditVehicle(currentVehicle)}
+                className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs transition-colors cursor-pointer"
+                title="编辑当前车型档案"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* 删除当前车型按钮 */}
+              <button
+                onClick={() => handleDeleteVehicleAction(currentVehicle.id, currentVehicle.name)}
+                className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 text-xs transition-colors cursor-pointer"
+                title="删除当前车型档案"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+
+              {/* 车型管理列表按钮 */}
+              <button
+                onClick={() => setIsVehicleListModalOpen(true)}
+                className="flex items-center gap-1 px-2 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
+                title="车型管理"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                <span>车型管理</span>
+              </button>
             </div>
             <p className="text-xs text-zinc-400 dark:text-zinc-500 pt-0.5">
               自动核算百公里油耗/电耗 · 维修保养项目档案 · 下次维保智能提醒
@@ -461,7 +589,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setIsVehicleModalOpen(true)}
+            onClick={handleOpenAddVehicle}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -519,275 +647,298 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
         </div>
 
         <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">百公里平均能耗</span>
+          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            {currentVehicle.fuelType === 'electric' ? '综合百公里电耗' : '综合百公里油耗'}
+          </span>
           <div className="text-xl sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-2">
-            {avgFuelEconomy.toFixed(1)}
-            <span className="text-xs font-normal text-zinc-400"> {currentVehicle.fuelType === 'electric' ? 'kWh/100km' : 'L/100km'}</span>
+            {avgFuelEconomy.toFixed(1)} <span className="text-xs font-normal text-zinc-400">{currentVehicle.fuelType === 'electric' ? 'kWh/100km' : 'L/100km'}</span>
+          </div>
+          <div className="text-[10px] text-zinc-400 mt-1">
+            累计 {vehicleFuels.length} 笔补能记录
           </div>
         </div>
 
         <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
-          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">养车总支出 (补能+维保)</span>
+          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">累计用车支出</span>
           <div className="text-xl sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-2">
             {formatCurrency(totalFuelCost + totalMaintCost, hidePrivacy)}
+          </div>
+          <div className="text-[10px] text-zinc-400 mt-1">
+            补能 {formatCurrency(totalFuelCost, hidePrivacy)} · 维保 {formatCurrency(totalMaintCost, hidePrivacy)}
           </div>
         </div>
       </div>
 
-      {/* 子标签切换 (加油 vs 维保) */}
-      <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
-        <div className="flex items-center gap-2">
+      {/* 子模块切换 */}
+      <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-2">
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setActiveSubTab('fuel')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeSubTab === 'fuel'
-                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs font-semibold'
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100'
+                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs'
+                : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
             }`}
           >
             <Fuel className="w-3.5 h-3.5" />
-            <span>加油与充电流水 ({vehicleFuels.length})</span>
+            <span>加油/充电明细 ({vehicleFuels.length})</span>
           </button>
           <button
             onClick={() => setActiveSubTab('maintenance')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeSubTab === 'maintenance'
-                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs font-semibold'
-                : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100'
+                ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs'
+                : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
             }`}
           >
             <Wrench className="w-3.5 h-3.5" />
-            <span>维修与保养记录 ({vehicleMaintenances.length})</span>
+            <span>保养与维修档案 ({vehicleMaintenances.length})</span>
           </button>
         </div>
 
-        <button
-          onClick={() => {
-            if (activeSubTab === 'fuel') {
-              const csv = exportFuelsToCsv(vehicleFuels);
-              triggerFileDownload(csv, `${currentVehicle.name}_加油补能明细.csv`, 'text/csv;charset=utf-8');
-            } else {
-              const csv = exportMaintenancesToCsv(vehicleMaintenances);
-              triggerFileDownload(csv, `${currentVehicle.name}_维保档案明细.csv`, 'text/csv;charset=utf-8');
-            }
-          }}
-          className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 flex items-center gap-1"
-        >
-          <Download className="w-3.5 h-3.5" />
-          <span>导出 CSV</span>
-        </button>
+        <div>
+          {activeSubTab === 'fuel' ? (
+            <button
+              onClick={() => {
+                const csv = exportFuelsToCsv(vehicleFuels);
+                triggerFileDownload(csv, `qiyue_fuel_${currentVehicle.name}_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
+              }}
+              className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>导出补能 CSV</span>
+            </button>
+          ) : (
+            <button
+              onClick={() => {
+                const csv = exportMaintenancesToCsv(vehicleMaintenances);
+                triggerFileDownload(csv, `qiyue_maintenance_${currentVehicle.name}_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
+              }}
+              className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>导出维保 CSV</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* 1. 加油/充电记录列表 */}
+      {/* 1. 加油/充电明细表 */}
       {activeSubTab === 'fuel' && (
-        <div className="space-y-3">
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden">
           {vehicleFuels.length === 0 ? (
-            <div className="p-12 text-center rounded-3xl bg-white dark:bg-zinc-900 border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-400">
-              <Fuel className="w-10 h-10 mx-auto mb-3 text-zinc-300 dark:text-zinc-700" />
-              <p className="text-sm font-medium">暂无加油/充电补能记录</p>
-              <button
-                onClick={handleOpenAddFuel}
-                className="mt-3 px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs"
-              >
-                录入第一次补能
-              </button>
+            <div className="p-8 text-center text-zinc-400 dark:text-zinc-600 text-xs">
+              暂无该车辆的补能记录，点击右上角「记一笔补能」开始记录
             </div>
           ) : (
-            vehicleFuels.map((f) => (
-              <div
-                key={f.id}
-                className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
-              >
-                <div className="flex items-start gap-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shrink-0 border border-zinc-200/60 dark:border-zinc-700/60">
-                    <Fuel className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-zinc-900 dark:text-zinc-100 text-sm">{f.station || '补能站点'}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400">
-                        {f.fuelType}
-                      </span>
-                      {f.isFullTank && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-medium">
-                          加满/充满
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-zinc-400 dark:text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
-                      <span>{f.date}</span>
-                      <span>·</span>
-                      <span>表显 {f.odometer.toLocaleString()} km</span>
-                      {f.tripDistance ? <span>· 区间行驶 +{f.tripDistance} km</span> : null}
-                      <span>·</span>
-                      <span>{f.fuelAmount} {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'} @ ¥{f.unitPrice}</span>
-                    </div>
-                    {f.notes && <p className="text-[11px] text-zinc-400 mt-0.5">{f.notes}</p>}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 dark:border-zinc-800">
-                  <div className="text-right">
-                    <span className="text-[10px] text-zinc-400 block">实付金额</span>
-                    <span className="font-bold font-mono text-base text-zinc-900 dark:text-zinc-100">
-                      {formatCurrency(f.totalCost, hidePrivacy)}
-                    </span>
-                    {f.calculatedFuelEconomy && (
-                      <span className="text-[10px] text-zinc-500 block font-mono font-medium">
-                        {f.calculatedFuelEconomy} {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}/100km
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleOpenEditFuel(f)}
-                      className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
-                      title="编辑"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm('确认删除该笔补能记录？')) {
-                          onDeleteFuel(f.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 cursor-pointer"
-                      title="删除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* 2. 维修保养记录列表 */}
-      {activeSubTab === 'maintenance' && (
-        <div className="space-y-3">
-          {vehicleMaintenances.length === 0 ? (
-            <div className="p-12 text-center rounded-3xl bg-white dark:bg-zinc-900 border border-dashed border-zinc-200 dark:border-zinc-800 text-zinc-400">
-              <Wrench className="w-10 h-10 mx-auto mb-3 text-zinc-300 dark:text-zinc-700" />
-              <p className="text-sm font-medium">暂无维修保养记录</p>
-              <button
-                onClick={handleOpenAddMaint}
-                className="mt-3 px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs"
-              >
-                录入第一次保养
-              </button>
-            </div>
-          ) : (
-            vehicleMaintenances.map((m) => (
-              <div
-                key={m.id}
-                className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
-              >
-                <div className="flex items-start gap-3.5">
-                  <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shrink-0 border border-zinc-200/60 dark:border-zinc-700/60">
-                    <Wrench className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-zinc-900 dark:text-zinc-100 text-sm">{m.title}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
-                        {categoryLabels[m.category] || m.category}
-                      </span>
-                      {m.shopName && (
-                        <span className="text-[10px] text-zinc-400">@{m.shopName}</span>
-                      )}
-                    </div>
-                    <div className="text-zinc-400 dark:text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
-                      <span>{m.date}</span>
-                      <span>·</span>
-                      <span>表显 {m.odometer.toLocaleString()} km</span>
-                      {m.partsCost > 0 && <span>· 配件 ¥{m.partsCost}</span>}
-                      {m.laborCost > 0 && <span>· 工时 ¥{m.laborCost}</span>}
-                    </div>
-                    {m.items && m.items.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {m.items.map((it, idx) => (
-                          <span
-                            key={idx}
-                            className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300"
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-zinc-50/80 dark:bg-zinc-800/40 text-zinc-400 border-b border-zinc-200/80 dark:border-zinc-800/80 font-medium">
+                  <tr>
+                    <th className="py-3 px-4">日期</th>
+                    <th className="py-3 px-4">表显里程</th>
+                    <th className="py-3 px-4">充/加油量</th>
+                    <th className="py-3 px-4">单价</th>
+                    <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">实付金额</th>
+                    <th className="py-3 px-4">能耗核算</th>
+                    <th className="py-3 px-4">站点/类型</th>
+                    <th className="py-3 px-4">备注</th>
+                    <th className="py-3 px-4 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                  {vehicleFuels.map((f) => (
+                    <tr key={f.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+                      <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
+                        {f.date}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
+                        {f.odometer.toLocaleString()} km
+                      </td>
+                      <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
+                        {f.fuelAmount} {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-zinc-500">
+                        ¥{f.unitPrice.toFixed(2)}
+                      </td>
+                      <td className="py-3 px-4 font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                        {formatCurrency(f.totalCost, hidePrivacy)}
+                      </td>
+                      <td className="py-3 px-4">
+                        {f.calculatedFuelEconomy ? (
+                          <div className="space-y-0.5">
+                            <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                              {f.calculatedFuelEconomy.toFixed(1)} {currentVehicle.fuelType === 'electric' ? 'kWh/100km' : 'L/100km'}
+                            </span>
+                            {f.costPerKm && (
+                              <div className="text-[10px] text-zinc-400">
+                                约 ¥{f.costPerKm.toFixed(2)}/km
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-zinc-400 text-[11px]">- (首笔/累计中)</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-zinc-600 dark:text-zinc-400">
+                        <div className="font-medium">{f.station || '-'}</div>
+                        <div className="text-[10px] text-zinc-400">{f.fuelType}</div>
+                      </td>
+                      <td className="py-3 px-4 text-zinc-500 max-w-xs truncate">
+                        {f.notes || '-'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleOpenEditFuel(f)}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                            title="编辑"
                           >
-                            {it}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-zinc-100 dark:border-zinc-800">
-                  <div className="text-right">
-                    <span className="text-[10px] text-zinc-400 block">维保总计</span>
-                    <span className="font-bold font-mono text-base text-zinc-900 dark:text-zinc-100">
-                      {formatCurrency(m.totalCost, hidePrivacy)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => handleOpenEditMaint(m)}
-                      className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
-                      title="编辑"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm('确认删除该笔维保记录？')) {
-                          onDeleteMaintenance(m.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/40 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-rose-600 dark:text-rose-400 cursor-pointer"
-                      title="删除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`确定删除 ${f.date} 的这笔补能记录吗？`)) {
+                                onDeleteFuel(f.id);
+                              }
+                            }}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
+                            title="删除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
 
-      {/* 模态框：录入/编辑加油 */}
+      {/* 2. 保养与维修档案明细表 */}
+      {activeSubTab === 'maintenance' && (
+        <div className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden">
+          {vehicleMaintenances.length === 0 ? (
+            <div className="p-8 text-center text-zinc-400 dark:text-zinc-600 text-xs">
+              暂无该车辆的维保记录，点击右上角「记一笔维保」开始记录
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-zinc-50/80 dark:bg-zinc-800/40 text-zinc-400 border-b border-zinc-200/80 dark:border-zinc-800/80 font-medium">
+                  <tr>
+                    <th className="py-3 px-4">维保日期</th>
+                    <th className="py-3 px-4">分类</th>
+                    <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">维保项目</th>
+                    <th className="py-3 px-4">服务门店</th>
+                    <th className="py-3 px-4">表显里程</th>
+                    <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">总费用</th>
+                    <th className="py-3 px-4">下次建议</th>
+                    <th className="py-3 px-4 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                  {vehicleMaintenances.map((m) => (
+                    <tr key={m.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+                      <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
+                        {m.date}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-700 dark:text-zinc-300">
+                          {categoryLabels[m.category] || m.category}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-zinc-900 dark:text-zinc-100 font-medium">
+                        <div>{m.title}</div>
+                        {m.items && m.items.length > 0 && (
+                          <div className="text-[10px] text-zinc-400 mt-0.5">
+                            {m.items.join(' / ')}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-zinc-600 dark:text-zinc-400">
+                        {m.shopName || '-'}
+                      </td>
+                      <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
+                        {m.odometer.toLocaleString()} km
+                      </td>
+                      <td className="py-3 px-4 font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                        {formatCurrency(m.totalCost, hidePrivacy)}
+                      </td>
+                      <td className="py-3 px-4 text-[11px] text-zinc-500">
+                        {m.nextServiceOdometer ? (
+                          <div>{m.nextServiceOdometer.toLocaleString()} km</div>
+                        ) : null}
+                        {m.nextServiceDate ? (
+                          <div className="text-zinc-400">{m.nextServiceDate}</div>
+                        ) : null}
+                        {!m.nextServiceOdometer && !m.nextServiceDate && '-'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => handleOpenEditMaint(m)}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                            title="编辑"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
+                                onDeleteMaintenance(m.id);
+                              }
+                            }}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
+                            title="删除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 加油/充电 Modal */}
       {isFuelModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
+          <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Fuel className="w-5 h-5 text-zinc-500" />
-                <span>{editingFuelId ? '编辑补能记录' : `为 ${currentVehicle.name} 记一笔补能`}</span>
+                <span>{editingFuelId ? '编辑补能记录' : '记一笔补能'}</span>
               </h3>
               <button
                 onClick={() => setIsFuelModalOpen(false)}
-                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white"
+                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleFuelSubmit} className="space-y-3.5">
+            <form onSubmit={handleSaveFuel} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">日期</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">补能日期</label>
                   <input
                     type="date"
                     required
                     value={fuelForm.date}
                     onChange={(e) => setFuelForm({ ...fuelForm, date: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">加油/充电时表显里程 (km)</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">当前表显里程 (km)</label>
                   <input
                     type="number"
                     required
@@ -800,7 +951,9 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">补能量 (L/kWh)</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                    {currentVehicle.fuelType === 'electric' ? '充电量 (kWh)' : '加油升数 (L)'}
+                  </label>
                   <input
                     type="number"
                     step="0.01"
@@ -808,25 +961,37 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     value={fuelForm.fuelAmount}
                     onChange={(e) => {
                       const amt = parseFloat(e.target.value) || 0;
-                      setFuelForm({ ...fuelForm, fuelAmount: amt, totalCost: Math.round(amt * fuelForm.unitPrice * 100) / 100 });
+                      setFuelForm({
+                        ...fuelForm,
+                        fuelAmount: amt,
+                        totalCost: Number((amt * fuelForm.unitPrice).toFixed(2)),
+                      });
                     }}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold"
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
+
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">单价 (元)</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                    {currentVehicle.fuelType === 'electric' ? '电价 (元/度)' : '油价 (元/L)'}
+                  </label>
                   <input
                     type="number"
                     step="0.01"
                     required
                     value={fuelForm.unitPrice}
                     onChange={(e) => {
-                      const up = parseFloat(e.target.value) || 0;
-                      setFuelForm({ ...fuelForm, unitPrice: up, totalCost: Math.round(fuelForm.fuelAmount * up * 100) / 100 });
+                      const price = parseFloat(e.target.value) || 0;
+                      setFuelForm({
+                        ...fuelForm,
+                        unitPrice: price,
+                        totalCost: Number((fuelForm.fuelAmount * price).toFixed(2)),
+                      });
                     }}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
+
                 <div>
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">实付总金额 (元)</label>
                   <input
@@ -842,18 +1007,20 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">加油站 / 充电站品牌</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">站点名称</label>
                   <input
                     type="text"
+                    placeholder="如: 特来电 / 中国石化"
                     value={fuelForm.station}
                     onChange={(e) => setFuelForm({ ...fuelForm, station: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">燃油/充电规格</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">标号类型</label>
                   <input
                     type="text"
+                    placeholder="如: 95# 汽油 / 快充"
                     value={fuelForm.fuelType}
                     onChange={(e) => setFuelForm({ ...fuelForm, fuelType: e.target.value })}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
@@ -861,24 +1028,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="isFullTank"
-                  checked={fuelForm.isFullTank}
-                  onChange={(e) => setFuelForm({ ...fuelForm, isFullTank: e.target.checked })}
-                  className="rounded text-zinc-900 focus:ring-0"
-                />
-                <label htmlFor="isFullTank" className="text-zinc-700 dark:text-zinc-300 font-medium cursor-pointer">
-                  是否加满油箱 / 充满电池（加满可精准计算区间百公里油耗）
-                </label>
-              </div>
-
               <div>
-                <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">备注说明</label>
+                <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">备注信息</label>
                 <input
                   type="text"
-                  placeholder="如: 高速服务区补能 / 谷电时段充电"
+                  placeholder="其他补充..."
                   value={fuelForm.notes}
                   onChange={(e) => setFuelForm({ ...fuelForm, notes: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
@@ -905,27 +1059,27 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
         </div>
       )}
 
-      {/* 模态框：录入/编辑维保 */}
+      {/* 维保 Modal */}
       {isMaintModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Wrench className="w-5 h-5 text-zinc-500" />
-                <span>{editingMaintId ? '编辑维保记录' : `为 ${currentVehicle.name} 记录维保项目`}</span>
+                <span>{editingMaintId ? '编辑维保记录' : '记一笔维保'}</span>
               </h3>
               <button
                 onClick={() => setIsMaintModalOpen(false)}
-                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white"
+                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleMaintSubmit} className="space-y-3.5">
+            <form onSubmit={handleSaveMaint} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">日期</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">维保日期</label>
                   <input
                     type="date"
                     required
@@ -935,7 +1089,33 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">维保时表显里程 (km)</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">维保分类</label>
+                  <select
+                    value={maintForm.category}
+                    onChange={(e) => setMaintForm({ ...maintForm, category: e.target.value as MaintenanceCategory })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                  >
+                    {Object.entries(categoryLabels).map(([cat, label]) => (
+                      <option key={cat} value={cat}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">项目标题</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="如: 4万公里常规保养"
+                    value={maintForm.title}
+                    onChange={(e) => setMaintForm({ ...maintForm, title: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">表显里程 (km)</label>
                   <input
                     type="number"
                     required
@@ -946,51 +1126,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">维保分类</label>
-                  <select
-                    value={maintForm.category}
-                    onChange={(e) => setMaintForm({ ...maintForm, category: e.target.value as MaintenanceCategory })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                  >
-                    {Object.entries(categoryLabels).map(([k, v]) => (
-                      <option key={k} value={k}>
-                        {v}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">门店/汽修厂</label>
-                  <input
-                    type="text"
-                    value={maintForm.shopName}
-                    onChange={(e) => setMaintForm({ ...maintForm, shopName: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                  />
-                </div>
-              </div>
-
               <div>
-                <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">保养项目标题</label>
+                <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">维保明细项 (逗号分隔)</label>
                 <input
                   type="text"
-                  required
-                  placeholder="如: 常规小保养 (机油机滤)"
-                  value={maintForm.title}
-                  onChange={(e) => setMaintForm({ ...maintForm, title: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
-                  更换配件与服务细项 (逗号分隔)
-                </label>
-                <textarea
-                  rows={2}
-                  placeholder="如: 全合成机油4L, 品牌机油滤芯"
+                  placeholder="如: 机油, 机滤, 空气滤清器, 刹车油"
                   value={maintForm.itemsStr}
                   onChange={(e) => setMaintForm({ ...maintForm, itemsStr: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
@@ -999,33 +1139,41 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
               <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">配件材料费</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">配件费用 (元)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={maintForm.partsCost}
                     onChange={(e) => {
-                      const p = parseFloat(e.target.value) || 0;
-                      setMaintForm({ ...maintForm, partsCost: p, totalCost: p + maintForm.laborCost });
+                      const parts = parseFloat(e.target.value) || 0;
+                      setMaintForm({
+                        ...maintForm,
+                        partsCost: parts,
+                        totalCost: Number((parts + maintForm.laborCost).toFixed(2)),
+                      });
                     }}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">工时费</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">工时费用 (元)</label>
                   <input
                     type="number"
                     step="0.01"
                     value={maintForm.laborCost}
                     onChange={(e) => {
-                      const l = parseFloat(e.target.value) || 0;
-                      setMaintForm({ ...maintForm, laborCost: l, totalCost: maintForm.partsCost + l });
+                      const labor = parseFloat(e.target.value) || 0;
+                      setMaintForm({
+                        ...maintForm,
+                        laborCost: labor,
+                        totalCost: Number((maintForm.partsCost + labor).toFixed(2)),
+                      });
                     }}
                     className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">实付总费用</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">实付总计 (元)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -1039,21 +1187,23 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">下次建议保养里程 (km)</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">服务门店/4S店</label>
                   <input
-                    type="number"
-                    value={maintForm.nextServiceOdometer}
-                    onChange={(e) => setMaintForm({ ...maintForm, nextServiceOdometer: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    type="text"
+                    placeholder="如: 途虎养车 / 特斯拉服务中心"
+                    value={maintForm.shopName}
+                    onChange={(e) => setMaintForm({ ...maintForm, shopName: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">下次建议保养日期</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">下次建议里程 (km)</label>
                   <input
-                    type="date"
-                    value={maintForm.nextServiceDate}
-                    onChange={(e) => setMaintForm({ ...maintForm, nextServiceDate: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    type="number"
+                    placeholder="如: 30000"
+                    value={maintForm.nextServiceOdometer || ''}
+                    onChange={(e) => setMaintForm({ ...maintForm, nextServiceOdometer: parseFloat(e.target.value) || 0 })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
               </div>
@@ -1070,7 +1220,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold shadow-xs cursor-pointer"
                 >
-                  保存维保记录
+                  保存记录
                 </button>
               </div>
             </form>
@@ -1078,24 +1228,24 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
         </div>
       )}
 
-      {/* 新增爱车 Profile 弹窗 */}
+      {/* 车辆档案创建与修改 Modal */}
       {isVehicleModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
               <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
                 <Car className="w-5 h-5 text-zinc-500" />
-                <span>添加爱车档案</span>
+                <span>{editingVehicleId ? '编辑爱车档案' : '添加爱车档案'}</span>
               </h3>
               <button
                 onClick={() => setIsVehicleModalOpen(false)}
-                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white"
+                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateVehicle} className="space-y-3.5">
+            <form onSubmit={handleSaveVehicleProfile} className="space-y-3.5">
               <div>
                 <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">车辆名称/型号</label>
                 <input
@@ -1138,6 +1288,17 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                    {vehicleForm.fuelType === 'electric' ? '电池容量 (kWh)' : '油箱容积 (L)'}
+                  </label>
+                  <input
+                    type="number"
+                    value={vehicleForm.tankCapacity}
+                    onChange={(e) => setVehicleForm({ ...vehicleForm, tankCapacity: parseFloat(e.target.value) || 50 })}
+                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                  />
+                </div>
+                <div>
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">初始里程 (km)</label>
                   <input
                     type="number"
@@ -1146,33 +1307,162 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                     className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
-                <div>
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">保养周期里程 (km)</label>
-                  <input
-                    type="number"
-                    value={vehicleForm.maintenanceIntervalKm}
-                    onChange={(e) => setVehicleForm({ ...vehicleForm, maintenanceIntervalKm: parseFloat(e.target.value) || 10000 })}
-                    className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
-                </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-                <button
-                  type="button"
-                  onClick={() => setIsVehicleModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold shadow-xs cursor-pointer"
-                >
-                  创建车辆
-                </button>
+              <div>
+                <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">保养周期里程 (km)</label>
+                <input
+                  type="number"
+                  value={vehicleForm.maintenanceIntervalKm}
+                  onChange={(e) => setVehicleForm({ ...vehicleForm, maintenanceIntervalKm: parseFloat(e.target.value) || 10000 })}
+                  className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-3 border-t border-zinc-100 dark:border-zinc-800">
+                {editingVehicleId ? (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteVehicleAction(editingVehicleId, vehicleForm.name)}
+                    className="px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>删除此车型</span>
+                  </button>
+                ) : <span />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsVehicleModalOpen(false)}
+                    className="px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold shadow-xs cursor-pointer"
+                  >
+                    {editingVehicleId ? '保存修改' : '创建车辆'}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 车型管理列表 Modal */}
+      {isVehicleListModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-150">
+          <div className="w-full max-w-xl bg-white dark:bg-zinc-900 rounded-3xl p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Car className="w-5 h-5 text-zinc-500" />
+                <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">车型档案管理</h3>
+                <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] font-semibold">
+                  共 {vehicles.length} 辆车
+                </span>
+              </div>
+              <button
+                onClick={() => setIsVehicleListModalOpen(false)}
+                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+              {vehicles.map((v) => {
+                const isActive = v.id === currentVehicle.id;
+                const vFuelsCount = fuels.filter((f) => f.vehicleId === v.id).length;
+                const vMaintsCount = maintenances.filter((m) => m.vehicleId === v.id).length;
+
+                return (
+                  <div
+                    key={v.id}
+                    className={`p-4 rounded-2xl border transition-all ${
+                      isActive
+                        ? 'bg-zinc-50/80 dark:bg-zinc-800/40 border-zinc-900/30 dark:border-zinc-100/30 shadow-xs'
+                        : 'bg-white dark:bg-zinc-900 border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{v.name}</span>
+                          <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[11px] font-mono font-medium text-zinc-700 dark:text-zinc-300">
+                            {v.plateNumber || '未填写车牌'}
+                          </span>
+                          {isActive && (
+                            <span className="px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold border border-emerald-200/60 flex items-center gap-1">
+                              <Check className="w-3 h-3" />
+                              当前使用中
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-zinc-400 flex items-center gap-3">
+                          <span>类型: {v.fuelType === 'electric' ? '纯电' : v.fuelType === 'hybrid' ? '插混' : '燃油'}</span>
+                          <span>初始: {v.initialOdometer.toLocaleString()} km</span>
+                          <span>补能: {vFuelsCount} 笔</span>
+                          <span>维保: {vMaintsCount} 笔</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isActive && (
+                          <button
+                            onClick={() => {
+                              onChangeActiveVehicle(v.id);
+                            }}
+                            className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer"
+                          >
+                            设为当前
+                          </button>
+                        )}
+                        <button
+                          onClick={() => {
+                            setIsVehicleListModalOpen(false);
+                            handleOpenEditVehicle(v);
+                          }}
+                          className="px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>编辑</span>
+                        </button>
+                        <button
+                          onClick={() => handleDeleteVehicleAction(v.id, v.name)}
+                          className="px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>删除</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-100 dark:border-zinc-800">
+              <button
+                onClick={() => {
+                  setIsVehicleListModalOpen(false);
+                  handleOpenAddVehicle();
+                }}
+                className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-bold shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>添加新车型</span>
+              </button>
+
+              <button
+                onClick={() => setIsVehicleListModalOpen(false)}
+                className="px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                关闭
+              </button>
+            </div>
           </div>
         </div>
       )}
