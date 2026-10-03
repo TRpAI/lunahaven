@@ -7,6 +7,8 @@ import {
   Car,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   Cloud,
   CloudCog,
@@ -14,24 +16,17 @@ import {
   Copy,
   Database,
   Download,
-  ExternalLink,
   FileCode,
-  FileText,
   Fuel,
   Gift,
-  Globe,
-  HelpCircle,
   Layers,
-  Lock,
   RefreshCw,
   Server,
   Shield,
   ShoppingBag,
   Sparkles,
   Terminal,
-  Wifi,
   Wrench,
-  Zap,
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import {
@@ -70,10 +65,9 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   const [apiTokenInput, setApiTokenInput] = useState(d1Config.apiToken || '');
   const [autoSyncInput, setAutoSyncInput] = useState<boolean>(d1Config.autoSync ?? true);
   const [autoSyncDelayInput, setAutoSyncDelayInput] = useState<number>(d1Config.autoSyncDelaySeconds ?? 15);
-  const [activeTab, setActiveTab] = useState<'status' | 'config' | 'guide' | 'sql'>('status');
 
   const [pullLoading, setPullLoading] = useState(false);
-  const [pullMsg, setPullMsg] = useState<string | null>(null);
+  const [pullMsg, setPullMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthStatusResult, setHealthStatusResult] = useState<{
@@ -87,7 +81,8 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   const [initLoading, setInitLoading] = useState(false);
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedWrangler, setCopiedWrangler] = useState(false);
-  const [copiedWorkerCode, setCopiedWorkerCode] = useState(false);
+  const [showSqlPreview, setShowSqlPreview] = useState(false);
+  const [isGuideOpen, setIsGuideOpen] = useState(false);
 
   // 统计各类数据明细条数
   const salariesCount = (fullData.salaries || []).length;
@@ -130,10 +125,10 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   };
 
   const handleRunHealthCheck = async () => {
-    const url = workerUrlInput.trim() || d1Config.workerUrl;
+    const url = (workerUrlInput || d1Config.workerUrl || '').trim();
 
     if (!url) {
-      alert('请先填入 Cloudflare Worker API URL');
+      alert('请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
       return;
     }
 
@@ -146,7 +141,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
       if (res.ok) {
         setHealthStatusResult({
           ok: true,
-          text: `🟢 状态正常: Worker 服务就绪 · D1 数据库连接正常 (Schema v${res.schemaVersion ?? 2}, Revision ${res.revision ?? 1}) · 延时 ${elapsed}ms`,
+          text: `Worker 节点在线 · D1 数据库连接正常 (Schema v${res.schemaVersion ?? 2}, Rev #${res.revision ?? 1})`,
           schemaVersion: res.schemaVersion ?? 2,
           revision: res.revision ?? 1,
           latencyMs: elapsed,
@@ -154,7 +149,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
       } else {
         setHealthStatusResult({
           ok: false,
-          text: `🔴 健康检查异常: ${res.message || '数据库未连接或未执行迁移'}`,
+          text: `健康检查异常: ${res.message || '数据库未连接或表未初始化'}`,
           latencyMs: elapsed,
         });
       }
@@ -162,7 +157,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
       const elapsed = Math.round(performance.now() - start);
       setHealthStatusResult({
         ok: false,
-        text: `🔴 无法连接至该节点: ${err.message}`,
+        text: `无法连接节点: ${err.message}`,
         latencyMs: elapsed,
       });
     } finally {
@@ -171,11 +166,11 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   };
 
   const handleInitRemoteDatabase = async () => {
-    const url = workerUrlInput.trim() || d1Config.workerUrl;
-    const token = apiTokenInput.trim() || d1Config.apiToken;
+    const url = (workerUrlInput || d1Config.workerUrl || '').trim();
+    const token = (apiTokenInput || d1Config.apiToken || '').trim();
 
     if (!url) {
-      alert('请先填入 Cloudflare Worker API URL');
+      alert('请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
       return;
     }
 
@@ -185,7 +180,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
       alert(`🎉 ${res.message || 'D1 数据库表结构已全部初始化就绪！'}\n现在您可以正常执行拉取与双向同步。`);
       handleRunHealthCheck();
     } catch (err: any) {
-      alert(`初始化失败: ${err.message}\n您也可以切换到「建表与部署指南」标签页，复制建表 SQL 到 Cloudflare 控制台手动执行。`);
+      alert(`初始化失败: ${err.message}\n您也可以展开下方的「D1 建表与生产部署指南」查看手动建表 SQL。`);
     } finally {
       setInitLoading(false);
     }
@@ -196,7 +191,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     const token = (apiTokenInput || d1Config.apiToken || '').trim();
 
     if (!url) {
-      alert('请先配置 Cloudflare Worker API 地址');
+      alert('请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
       return;
     }
     if (!window.confirm('从 Cloudflare D1 拉取数据将与本地数据合并更新，是否继续？')) {
@@ -231,9 +226,12 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         settings: updatedSettings,
         syncMeta: pulled.syncMeta || fullData.syncMeta,
       });
-      setPullMsg(`成功从 Cloudflare D1 拉取并合并数据！(${res.isIncremental ? '增量拉取' : '全量拉取'})`);
+      setPullMsg({
+        ok: true,
+        text: `已从 D1 成功同步最新云端数据 (${res.isIncremental ? '增量合并' : '全量同步'})`,
+      });
     } catch (err: any) {
-      setPullMsg(`拉取失败: ${err.message}`);
+      setPullMsg({ ok: false, text: `拉取失败: ${err.message}` });
     } finally {
       setPullLoading(false);
     }
@@ -266,94 +264,110 @@ AUTH_TOKEN = "your-custom-secret-password"`;
   const hasConfig = Boolean(d1Config.workerUrl);
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200 max-w-5xl mx-auto">
-      {/* 顶部标题栏与移动端自适应操作按钮组 */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-900 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shrink-0">
-            <Cloud className="w-6 h-6 text-zinc-700 dark:text-zinc-200" />
+    <div className="space-y-5 animate-in fade-in duration-200 max-w-5xl mx-auto">
+      {/* 顶部标题与核心操作控制台 (移动端窄屏完美自适应网格) */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-900 dark:text-zinc-100 border border-zinc-200/50 dark:border-zinc-700/50 shrink-0">
+              <Cloud className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-base font-bold text-zinc-900 dark:text-zinc-100 tracking-tight">
+                  Cloudflare D1 边缘数据库中心
+                </h1>
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center shrink-0 ${
+                    hasConfig
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-800/60'
+                      : 'bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60'
+                  }`}
+                >
+                  {hasConfig ? '已接入' : '未接入'}
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
+                全球边缘多活同步 · 本地优先离线可用 · 增量版本乐观锁
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-lg font-bold text-zinc-900 dark:text-zinc-100 tracking-tight flex items-center gap-2">
-              <span>Cloudflare D1 边缘数据库中心</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200/60 dark:border-indigo-800/60">
-                v2.1 生产版
-              </span>
-            </h1>
-            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
-              全球边缘低延时存储 · 增量同步与乐观锁 · 严格 Schema 控制 · 离线优先无缝双向同步
-            </p>
-          </div>
+
+          {healthStatusResult?.latencyMs && (
+            <div className="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200/60 dark:border-emerald-800/60 px-2.5 py-1 rounded-lg self-start sm:self-auto shrink-0 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>响应延时: {healthStatusResult.latencyMs}ms</span>
+            </div>
+          )}
         </div>
 
-        {/* 修复移动端窄屏排布异常的操作按钮组 */}
-        <div className="grid grid-cols-2 sm:flex sm:flex-wrap items-center gap-2 w-full lg:w-auto">
-          {hasConfig && (
+        {/* 核心操作按钮组：初始化表结构 / 同步 / 拉取 / 健康 / 导出 (移动端 2-3 列响应式网格排布) */}
+        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 w-full">
+            {/* 1. 初始化表结构 */}
             <button
               onClick={handleInitRemoteDatabase}
-              disabled={initLoading}
-              className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 min-w-0"
-              title="一键远程调用 Worker 自动创建全部 8 张业务数据表与索引"
+              disabled={initLoading || !hasConfig}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 text-white disabled:text-zinc-400 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed min-w-0"
+              title={hasConfig ? '远程初始化 D1 数据库 8 张表结构' : '请先配置 Worker URL'}
             >
               <Sparkles className={`w-3.5 h-3.5 shrink-0 ${initLoading ? 'animate-spin' : ''}`} />
-              <span className="truncate">{initLoading ? '建表中...' : '初始化表结构'}</span>
+              <span className="truncate">{initLoading ? '初始化中' : '初始化表结构'}</span>
             </button>
-          )}
 
-          {hasConfig && (
+            {/* 2. 立即同步 */}
             <button
               onClick={onManualSync}
-              disabled={isSyncing}
-              className="px-3 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 min-w-0"
+              disabled={isSyncing || !hasConfig}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 text-white dark:text-zinc-900 disabled:text-zinc-400 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed min-w-0"
+              title={hasConfig ? '立即双向增量同步数据' : '请先配置 Worker URL'}
             >
               <RefreshCw className={`w-3.5 h-3.5 shrink-0 ${isSyncing ? 'animate-spin' : ''}`} />
               <span className="truncate">{isSyncing ? '同步中...' : '立即同步'}</span>
             </button>
-          )}
 
-          {hasConfig && (
+            {/* 3. 从 D1 拉取 */}
             <button
               onClick={handlePullFromCloud}
-              disabled={pullLoading}
-              className="px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-xs font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 min-w-0"
+              disabled={pullLoading || !hasConfig}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:bg-zinc-100 dark:disabled:bg-zinc-800/40 text-zinc-800 dark:text-zinc-200 disabled:text-zinc-400 text-xs font-medium transition-all cursor-pointer disabled:cursor-not-allowed min-w-0"
+              title={hasConfig ? '从云端拉取并合并覆盖最新数据' : '请先配置 Worker URL'}
             >
-              <Download className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">{pullLoading ? '拉取中...' : '拉取云端'}</span>
+              <Download className={`w-3.5 h-3.5 shrink-0 ${pullLoading ? 'animate-bounce' : ''}`} />
+              <span className="truncate">{pullLoading ? '拉取中...' : '从 D1 拉取'}</span>
             </button>
-          )}
 
-          {hasConfig && (
+            {/* 4. 健康连通测试 */}
             <button
               onClick={handleRunHealthCheck}
-              disabled={healthLoading}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 min-w-0"
-              title="向 Worker /api/health 发送探测请求"
+              disabled={healthLoading || !hasConfig}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:bg-zinc-100 dark:disabled:bg-zinc-800/40 text-zinc-800 dark:text-zinc-200 disabled:text-zinc-400 text-xs font-medium transition-all cursor-pointer disabled:cursor-not-allowed min-w-0"
+              title={hasConfig ? '测试 Cloudflare Worker 与 D1 连通性与响应延时' : '请先配置 Worker URL'}
             >
-              <Activity className={`w-3.5 h-3.5 shrink-0 ${healthLoading ? 'animate-pulse text-amber-500' : ''}`} />
-              <span className="truncate">{healthLoading ? '探测中...' : '健康检查'}</span>
+              <Activity className={`w-3.5 h-3.5 shrink-0 ${healthLoading ? 'animate-spin text-amber-500' : 'text-emerald-500'}`} />
+              <span className="truncate">{healthLoading ? '测试中...' : '健康测试'}</span>
             </button>
-          )}
 
-          <button
-            onClick={handleExportSqlFile}
-            className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-colors cursor-pointer min-w-0 ${
-              hasConfig ? 'col-span-2 sm:col-span-1' : 'col-span-2 sm:col-span-1'
-            }`}
-            title="生成可以直接导入的完整 D1 SQL 备份脚本"
-          >
-            <Download className="w-3.5 h-3.5 shrink-0" />
-            <span className="truncate">导出 SQL</span>
-          </button>
+            {/* 5. 导出 SQL 备份 */}
+            <button
+              onClick={handleExportSqlFile}
+              className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-medium transition-all cursor-pointer min-w-0"
+              title="生成并下载标准 D1 SQL 数据备份文件"
+            >
+              <FileCode className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+              <span className="truncate">导出 SQL</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* 自动同步倒计时调度提醒 */}
+      {/* 自动防抖同步调度提醒 */}
       {pendingAutoSyncSeconds !== null && pendingAutoSyncSeconds !== undefined && (
-        <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200 shadow-xs">
+        <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between gap-3 animate-in fade-in duration-200 shadow-xs">
           <div className="flex items-center gap-2 min-w-0">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
             <span className="truncate">
-              检测到账目变动，将在 <b>{pendingAutoSyncSeconds}</b> 秒后自动推送同步至 D1 (连续操作自动防抖合并)。
+              检测到本地账目变动，将在 <b>{pendingAutoSyncSeconds}</b> 秒后自动防抖推送至 D1。
             </span>
           </div>
           <button
@@ -365,591 +379,427 @@ AUTH_TOKEN = "your-custom-secret-password"`;
         </div>
       )}
 
-      {/* 同步错误提示 */}
+      {/* 同步异常提示 */}
       {syncError && (
-        <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2.5">
-          <div className="w-4 h-4 rounded-full bg-rose-500 text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-            !
-          </div>
+        <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <div className="font-bold">云端同步出现异常</div>
-            <p className="mt-0.5 opacity-90">{syncError}</p>
-            <p className="mt-1 text-[11px] opacity-75">
-              提示：若首次部署且提示表不存在，可点击上方【初始化表结构】或在 Cloudflare 控制台执行建表 SQL。
+            <div className="font-bold">云端同步异常: {syncError}</div>
+            <p className="text-[11px] opacity-80 mt-0.5">
+              若首次使用提示表不存在，可点击上方快捷按钮中的【初始化表结构】。
             </p>
           </div>
         </div>
       )}
 
-      {/* 拉取提示 */}
+      {/* 拉取反馈提示 */}
       {pullMsg && (
         <div
-          className={`p-3.5 rounded-2xl border text-xs flex items-center gap-2 ${
-            pullMsg.includes('失败')
-              ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-700 dark:text-rose-300'
-              : 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-700 dark:text-emerald-300'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4 shrink-0" />
-          <span>{pullMsg}</span>
-        </div>
-      )}
-
-      {/* 健康诊断状态 */}
-      {healthStatusResult && (
-        <div
-          className={`p-3.5 rounded-2xl border text-xs flex items-center gap-2 ${
-            healthStatusResult.ok
+          className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+            pullMsg.ok
               ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 text-emerald-700 dark:text-emerald-300'
               : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 text-rose-700 dark:text-rose-300'
           }`}
         >
-          <span>{healthStatusResult.text}</span>
+          {pullMsg.ok ? <CheckCircle2 className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />}
+          <span>{pullMsg.text}</span>
         </div>
       )}
 
-      {/* 标签栏导航 */}
-      <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-200 dark:border-zinc-800 pb-2 text-xs font-medium">
-        <button
-          onClick={() => setActiveTab('status')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'status'
-              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold'
-              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-          }`}
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span>当前 D1 数据库信息状态</span>
-        </button>
+      {/* 卡片 1: 当前 D1 数据库信息状态 */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
+        <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <div>
+            <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <Database className="w-4 h-4 text-indigo-500" />
+              <span>当前 D1 数据库信息与状态</span>
+            </h2>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+              实时监控边缘节点连接、表结构版本、同步时效及各业务表资产明细
+            </p>
+          </div>
+        </div>
 
-        <button
-          onClick={() => setActiveTab('config')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'config'
-              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold'
-              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-          }`}
-        >
-          <CloudCog className="w-3.5 h-3.5" />
-          <span>连接设置</span>
-        </button>
+        {/* 状态 4 宫格 */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {/* 1. Worker 节点 */}
+          <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5">
+            <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 text-xs">
+              <span>Worker 节点</span>
+              <Server className="w-3.5 h-3.5 text-indigo-500" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  hasConfig
+                    ? healthStatusResult?.ok
+                      ? 'bg-emerald-500'
+                      : 'bg-emerald-500'
+                    : 'bg-amber-500'
+                }`}
+              />
+              <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+                {hasConfig ? '已绑定节点' : '未接入 Worker'}
+              </span>
+            </div>
+            <div className="text-[11px] text-zinc-400 truncate">
+              {d1Config.workerUrl ? d1Config.workerUrl.replace(/^https?:\/\//, '') : '当前仅本地优先存储'}
+            </div>
+          </div>
 
-        <button
-          onClick={() => setActiveTab('guide')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'guide'
-              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold'
-              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-          }`}
-        >
-          <BookOpen className="w-3.5 h-3.5" />
-          <span>D1 建表和部署指南</span>
-        </button>
+          {/* 2. D1 表结构版本 */}
+          <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5">
+            <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 text-xs">
+              <span>表结构版本</span>
+              <Database className="w-3.5 h-3.5 text-emerald-500" />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100 font-mono">
+                Schema v{fullData.syncMeta?.schemaVersion || 2}
+              </span>
+              <span className="text-[10px] font-mono px-1 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200/60 dark:border-zinc-700/60">
+                Rev #{fullData.syncMeta?.revision || 1}
+              </span>
+            </div>
+            <div className="text-[11px] text-zinc-400">
+              绑定标识: <code className="font-mono text-zinc-700 dark:text-zinc-300">env.DB</code> (8 张核心表)
+            </div>
+          </div>
 
-        <button
-          onClick={() => setActiveTab('sql')}
-          className={`flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all cursor-pointer ${
-            activeTab === 'sql'
-              ? 'bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900 font-semibold'
-              : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800/60'
-          }`}
-        >
-          <Code2 className="w-3.5 h-3.5" />
-          <span>完整建表 SQL</span>
-        </button>
+          {/* 3. 同步时效 */}
+          <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5">
+            <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 text-xs">
+              <span>同步时效</span>
+              <Clock className="w-3.5 h-3.5 text-amber-500" />
+            </div>
+            <div className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
+              {d1Config.autoSync ? `自动防抖 (${d1Config.autoSyncDelaySeconds ?? 15}s)` : '手动模式'}
+            </div>
+            <div className="text-[11px] text-zinc-400 truncate">
+              {d1Config.lastSyncTime ? `上次: ${d1Config.lastSyncTime}` : '暂无同步记录'}
+            </div>
+          </div>
+
+          {/* 4. 数据资产规模 */}
+          <div className="p-3.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 space-y-1.5">
+            <div className="flex items-center justify-between text-zinc-500 dark:text-zinc-400 text-xs">
+              <span>数据资产</span>
+              <Layers className="w-3.5 h-3.5 text-purple-500" />
+            </div>
+            <div className="flex items-center gap-1.5 font-mono">
+              <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{totalRecords}</span>
+              <span className="text-xs text-zinc-500 font-sans">条明细记录</span>
+            </div>
+            <div className="text-[11px] text-zinc-400">本地与云端实时双向比对</div>
+          </div>
+        </div>
+
+        {/* 健康诊断详情 */}
+        {healthStatusResult && (
+          <div
+            className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+              healthStatusResult.ok
+                ? 'bg-emerald-50/80 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/50 text-emerald-800 dark:text-emerald-300'
+                : 'bg-rose-50/80 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/50 text-rose-800 dark:text-rose-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {healthStatusResult.ok ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+              )}
+              <span>{healthStatusResult.text}</span>
+            </div>
+            {healthStatusResult.latencyMs && (
+              <span className="font-mono text-[10px] opacity-75 shrink-0">
+                {healthStatusResult.latencyMs}ms
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* D1 业务数据表明细一览 */}
+        <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+              各业务数据表记录统计
+            </span>
+            <span className="text-[11px] text-zinc-400">共 8 张表 · 全字段软删除与版本乐观锁</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Banknote className="w-3.5 h-3.5 text-blue-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">工资薪酬</span>
+              </div>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{salariesCount}</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">加班工时</span>
+              </div>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{overtimesCount}</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShoppingBag className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">日常开销</span>
+              </div>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{expensesCount}</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Gift className="w-3.5 h-3.5 text-pink-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">随礼人情</span>
+              </div>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{giftsCount}</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Car className="w-3.5 h-3.5 text-purple-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">车辆档案</span>
+              </div>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{vehiclesCount}</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Fuel className="w-3.5 h-3.5 text-orange-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">加油能耗</span>
+              </div>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fuelsCount}</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Wrench className="w-3.5 h-3.5 text-teal-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">维修保养</span>
+              </div>
+              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{maintenancesCount}</span>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield className="w-3.5 h-3.5 text-zinc-500" />
+                <span className="font-medium text-zinc-700 dark:text-zinc-300">元数据与日志</span>
+              </div>
+              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">就绪</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* 1. 当前 D1 数据库信息状态卡片 (核心状态监控看板) */}
-      {activeTab === 'status' && (
-        <div className="space-y-5 animate-in fade-in duration-150">
-          {/* 状态总览 4 宫格 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {/* 1. 边缘节点状态 */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">Worker 边缘节点</span>
-                <span className="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-                  <Server className="w-3.5 h-3.5" />
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`w-2.5 h-2.5 rounded-full ${
-                    hasConfig
-                      ? healthStatusResult
-                        ? healthStatusResult.ok
-                          ? 'bg-emerald-500 animate-pulse'
-                          : 'bg-rose-500'
-                        : 'bg-emerald-500'
-                      : 'bg-amber-500'
-                  }`}
-                />
-                <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                  {hasConfig ? '已接入 Worker' : '未配置 Worker'}
-                </span>
-              </div>
-              <div className="text-[11px] text-zinc-400 truncate" title={d1Config.workerUrl || '请先在连接设置中配置 Worker 地址'}>
-                {d1Config.workerUrl ? d1Config.workerUrl.replace(/^https?:\/\//, '') : '离线优先沙盒模式运行中'}
-              </div>
-            </div>
+      {/* 卡片 2: Cloudflare Worker API 连接与同步设置 */}
+      <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
+        <div className="border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+            <CloudCog className="w-4 h-4 text-indigo-500" />
+            <span>Cloudflare Worker API 连接与同步设置</span>
+          </h2>
+          <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
+            配置您在 Cloudflare 部署的私有 Worker API 节点与加密 Bearer Token 访问密钥
+          </p>
+        </div>
 
-            {/* 2. D1 数据库绑定与 Schema 版本 */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">D1 表结构版本</span>
-                <span className="p-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400">
-                  <Database className="w-3.5 h-3.5" />
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100 font-mono">
-                  Schema v{fullData.syncMeta?.schemaVersion || 2}
-                </span>
-                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200/50 dark:border-zinc-700/50">
-                  Rev #{fullData.syncMeta?.revision || 1}
-                </span>
-              </div>
-              <div className="text-[11px] text-zinc-400">
-                Binding 标识: <code className="font-mono text-zinc-700 dark:text-zinc-300">env.DB</code> (8 张核心表)
-              </div>
-            </div>
-
-            {/* 3. 同步时效与策略 */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">同步策略与时效</span>
-                <span className="p-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
-                  <Clock className="w-3.5 h-3.5" />
-                </span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100">
-                  {d1Config.autoSync ? '自动防抖同步' : '纯手动同步'}
-                </span>
-                {d1Config.autoSync && (
-                  <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400">
-                    ({d1Config.autoSyncDelaySeconds ?? 15}s)
-                  </span>
-                )}
-              </div>
-              <div className="text-[11px] text-zinc-400 truncate">
-                {d1Config.lastSyncTime ? `上次同步: ${d1Config.lastSyncTime}` : '暂无云端同步历史'}
-              </div>
-            </div>
-
-            {/* 4. 账本数据资产总规模 */}
-            <div className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400">数据资产总规模</span>
-                <span className="p-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
-                  <Layers className="w-3.5 h-3.5" />
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100 font-mono">
-                  {totalRecords}
-                </span>
-                <span className="text-xs text-zinc-500">笔明细数据</span>
-              </div>
-              <div className="text-[11px] text-zinc-400">
-                双端增量比对 · 乐观锁冲突自愈
-              </div>
-            </div>
+        <form onSubmit={handleSaveConfig} className="space-y-4 text-xs max-w-xl">
+          <div>
+            <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
+              Cloudflare Worker API 完整 URL
+            </label>
+            <input
+              type="url"
+              placeholder="如: https://qiyue-ledger-api.your-name.workers.dev"
+              value={workerUrlInput}
+              onChange={(e) => setWorkerUrlInput(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+            />
           </div>
 
-          {/* D1 数据表明细卡片 */}
-          <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <div>
+            <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
+              API 鉴权密钥 (AUTH_TOKEN)
+            </label>
+            <input
+              type="password"
+              placeholder="填入在 Worker 环境变量中配置的 secret 字符串"
+              value={apiTokenInput}
+              onChange={(e) => setApiTokenInput(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+            />
+          </div>
+
+          {/* 操作触发自动推送同步设置 */}
+          <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-3">
+            <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                  <Database className="w-4 h-4 text-indigo-500" />
-                  <span>D1 边缘数据库已注册业务表结构清单</span>
-                </h3>
-                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
-                  所有表均包含主键 UUID、逻辑删除 deleted_at 与增量索引字段
+                <div className="font-semibold text-zinc-900 dark:text-zinc-100">
+                  操作后自动推送同步
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  在账本发生增删改变动后，自动将最新本地数据推送同步至 D1
                 </p>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleRunHealthCheck}
-                  disabled={healthLoading}
-                  className="px-2.5 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 text-xs font-medium flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  <Activity className={`w-3.5 h-3.5 ${healthLoading ? 'animate-spin text-amber-500' : ''}`} />
-                  <span>探测 D1 连通状态</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-              {/* salaries */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/60 text-blue-600 flex items-center justify-center shrink-0">
-                    <Banknote className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">salaries</div>
-                    <div className="text-[10px] text-zinc-400">工资薪酬与五险一金</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{salariesCount} 笔</span>
-              </div>
-
-              {/* overtimes */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center shrink-0">
-                    <Clock className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">overtimes</div>
-                    <div className="text-[10px] text-zinc-400">加班工时与调休池</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{overtimesCount} 笔</span>
-              </div>
-
-              {/* expenses */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center shrink-0">
-                    <ShoppingBag className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">expenses</div>
-                    <div className="text-[10px] text-zinc-400">日常/医疗/教育开销</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{expensesCount} 笔</span>
-              </div>
-
-              {/* social_gifts */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-950/60 text-pink-600 flex items-center justify-center shrink-0">
-                    <Gift className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">social_gifts</div>
-                    <div className="text-[10px] text-zinc-400">人情随礼与往来账</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{giftsCount} 笔</span>
-              </div>
-
-              {/* vehicles */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-950/60 text-purple-600 flex items-center justify-center shrink-0">
-                    <Car className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">vehicles</div>
-                    <div className="text-[10px] text-zinc-400">车辆档案与参数</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{vehiclesCount} 辆</span>
-              </div>
-
-              {/* fuel_records */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-950/60 text-orange-600 flex items-center justify-center shrink-0">
-                    <Fuel className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">fuel_records</div>
-                    <div className="text-[10px] text-zinc-400">加油补能与能耗</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{fuelsCount} 笔</span>
-              </div>
-
-              {/* maintenance_records */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-teal-100 dark:bg-teal-950/60 text-teal-600 flex items-center justify-center shrink-0">
-                    <Wrench className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">maintenances</div>
-                    <div className="text-[10px] text-zinc-400">维修保养与车险</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100">{maintenancesCount} 笔</span>
-              </div>
-
-              {/* sync_meta & settings */}
-              <div className="p-3 rounded-xl bg-zinc-50/80 dark:bg-zinc-800/50 border border-zinc-200/60 dark:border-zinc-700/60 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center justify-center shrink-0">
-                    <Shield className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <div className="font-semibold text-zinc-800 dark:text-zinc-200">sync_meta & logs</div>
-                    <div className="text-[10px] text-zinc-400">同步元数据与审计</div>
-                  </div>
-                </div>
-                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">在线</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 2. 连接设置面板 */}
-      {activeTab === 'config' && (
-        <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-100 dark:border-zinc-800 pb-3">
-            <div>
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <CloudCog className="w-4 h-4 text-indigo-500" />
-                <span>Cloudflare Worker API 端点配置</span>
-              </h3>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
-                配置您在 Cloudflare 部署的私有 Worker API 节点与加密 Bearer Token 访问密钥。
-              </p>
-            </div>
-          </div>
-
-          <form onSubmit={handleSaveConfig} className="space-y-4 text-xs max-w-xl">
-            <div>
-              <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                Cloudflare Worker API 完整 URL
-              </label>
-              <input
-                type="url"
-                placeholder="如: https://qiyue-ledger-api.your-name.workers.dev"
-                value={workerUrlInput}
-                onChange={(e) => setWorkerUrlInput(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
-                API 鉴权密钥 (AUTH_TOKEN)
-              </label>
-              <input
-                type="password"
-                placeholder="填入在 Worker 环境变量中配置的 secret 字符串"
-                value={apiTokenInput}
-                onChange={(e) => setApiTokenInput(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
-              />
-            </div>
-
-            {/* 操作触发自动推送同步设置 */}
-            <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-3">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="font-semibold text-zinc-900 dark:text-zinc-100">
-                    操作后自动推送同步
-                  </div>
-                  <p className="text-[11px] text-zinc-400 mt-0.5">
-                    在账本发生增删改变动后，自动将最新本地数据推送同步至 D1
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setAutoSyncInput(!autoSyncInput)}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
-                    autoSyncInput ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
-                  }`}
-                >
-                  <span
-                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition-transform ${
-                      autoSyncInput ? 'translate-x-4.5' : 'translate-x-1'
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {autoSyncInput && (
-                <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div>
-                    <span className="text-zinc-700 dark:text-zinc-300 font-medium">
-                      操作后推送等待时间 (防抖缓冲)
-                    </span>
-                    <p className="text-[11px] text-zinc-400">连续多笔操作将在此时间段内合并为单次增量请求</p>
-                  </div>
-                  <select
-                    value={autoSyncDelayInput}
-                    onChange={(e) => setAutoSyncDelayInput(parseInt(e.target.value))}
-                    className="px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs focus:outline-hidden shrink-0"
-                  >
-                    <option value={0}>0 秒 (每次操作后立即推送)</option>
-                    <option value={5}>5 秒</option>
-                    <option value={15}>15 秒 (默认推荐)</option>
-                    <option value={30}>30 秒</option>
-                    <option value={60}>1 分钟</option>
-                    <option value={300}>5 分钟 (大批记录批量汇总结算)</option>
-                  </select>
-                </div>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
               <button
-                type="submit"
-                className="px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                type="button"
+                onClick={() => setAutoSyncInput(!autoSyncInput)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors cursor-pointer ${
+                  autoSyncInput ? 'bg-emerald-500' : 'bg-zinc-300 dark:bg-zinc-700'
+                }`}
               >
-                保存并应用 D1 配置
+                <span
+                  className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition-transform ${
+                    autoSyncInput ? 'translate-x-4.5' : 'translate-x-1'
+                  }`}
+                />
               </button>
             </div>
-          </form>
-        </div>
-      )}
 
-      {/* 3. 新卡片：D1 建表和部署指南 (全面生产级说明指南) */}
-      {activeTab === 'guide' && (
-        <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-6 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
-          <div className="border-b border-zinc-100 dark:border-zinc-800 pb-4">
-            <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-indigo-500" />
-              <span>Cloudflare D1 边缘数据库建表与生产部署指南</span>
-            </h3>
-            <p className="text-zinc-400 dark:text-zinc-500 mt-1">
-              通过 Cloudflare Workers + D1 免费搭建个人高可用边缘数据库，实现手机、电脑、平板全端实时增量多活同步。
+            {autoSyncInput && (
+              <div className="pt-2 border-t border-zinc-200/60 dark:border-zinc-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <span className="text-zinc-700 dark:text-zinc-300 font-medium">
+                    操作后推送等待时间 (防抖缓冲)
+                  </span>
+                  <p className="text-[11px] text-zinc-400">连续多笔操作将在此时间段内合并为单次增量请求</p>
+                </div>
+                <select
+                  value={autoSyncDelayInput}
+                  onChange={(e) => setAutoSyncDelayInput(parseInt(e.target.value))}
+                  className="px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs focus:outline-hidden shrink-0"
+                >
+                  <option value={0}>0 秒 (每次操作后立即推送)</option>
+                  <option value={5}>5 秒</option>
+                  <option value={15}>15 秒 (默认推荐)</option>
+                  <option value={30}>30 秒</option>
+                  <option value={60}>1 分钟</option>
+                  <option value={300}>5 分钟</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          <div className="pt-1">
+            <button
+              type="submit"
+              className="px-5 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            >
+              保存 D1 连接配置
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* 卡片 3: 新增独立卡片 —— D1 建表与生产部署指南 */}
+      <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4 text-xs leading-relaxed text-zinc-700 dark:text-zinc-300">
+        <div className="flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-3">
+          <div>
+            <h2 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-indigo-500" />
+              <span>D1 建表与生产部署指南</span>
+            </h2>
+            <p className="text-[11px] text-zinc-400 mt-0.5">
+              基于 Cloudflare 免费套餐快速部署专属私有数据节点与表结构说明
             </p>
           </div>
 
-          {/* 步骤一：创建 D1 数据库 */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              <span className="w-6 h-6 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center text-xs font-mono">
-                1
-              </span>
-              <span>创建 Cloudflare D1 数据库</span>
+          <button
+            onClick={() => setIsGuideOpen(!isGuideOpen)}
+            className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer font-medium"
+          >
+            <span>{isGuideOpen ? '收起指南' : '查看完整步骤'}</span>
+            {isGuideOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* 部署流程精简 3 步 */}
+        <div className="space-y-3">
+          <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-2">
+            <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+              <Terminal className="w-3.5 h-3.5 text-zinc-500" />
+              <span>步骤 1：在终端创建 D1 数据库</span>
             </div>
-            <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-2">
-              <p>在本地终端或项目根目录运行以下命令（或直接在 Cloudflare Dashboard 控制台创建）：</p>
-              <pre className="p-3 rounded-xl bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto select-all">
-                npx wrangler d1 create qiyue_ledger_d1
-              </pre>
-              <p className="text-[11px] text-zinc-400">
-                执行后命令行将输出对应的 <code className="font-mono text-zinc-700 dark:text-zinc-300">database_id</code>（例如：<code className="font-mono">xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx</code>）。
-              </p>
-            </div>
+            <p className="text-zinc-500 dark:text-zinc-400">
+              在本地终端运行以下命令创建数据库并获取 <code className="font-mono text-zinc-800 dark:text-zinc-200">database_id</code>：
+            </p>
+            <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto select-all">
+              npx wrangler d1 create qiyue_ledger_d1
+            </pre>
           </div>
 
-          {/* 步骤二：绑定 Worker 与环境变量 */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              <span className="w-6 h-6 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center text-xs font-mono">
-                2
+          <div className="p-3.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
+                <Code2 className="w-3.5 h-3.5 text-zinc-500" />
+                <span>步骤 2：配置 worker/wrangler.toml 并发布</span>
               </span>
-              <span>配置 wrangler.toml 与 Worker 绑定</span>
+              <button
+                onClick={handleCopyWrangler}
+                className="flex items-center gap-1 text-[11px] text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
+              >
+                {copiedWrangler ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedWrangler ? '已复制' : '复制配置'}</span>
+              </button>
             </div>
-            <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span>在 <code className="font-mono text-zinc-800 dark:text-zinc-200">worker/wrangler.toml</code> 中填入您的 database_id 与 AUTH_TOKEN：</span>
-                <button
-                  onClick={handleCopyWrangler}
-                  className="flex items-center gap-1 text-[11px] font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
-                >
-                  {copiedWrangler ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedWrangler ? '已复制' : '复制配置'}</span>
-                </button>
-              </div>
-              <pre className="p-3 rounded-xl bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto select-all">
-                {wranglerTomlExample}
-              </pre>
-            </div>
+            <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto select-all">
+              {wranglerTomlExample}
+            </pre>
+            <p className="text-zinc-500 dark:text-zinc-400">
+              进入 <code className="font-mono text-zinc-800 dark:text-zinc-200">worker/</code> 目录执行部署命令：
+            </p>
+            <pre className="p-2.5 rounded-lg bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto select-all">
+              npx wrangler deploy
+            </pre>
           </div>
 
-          {/* 步骤三：初始化数据库建表 (3 种方式) */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              <span className="w-6 h-6 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center text-xs font-mono">
-                3
-              </span>
-              <span>初始化 D1 数据表结构（三选一）</span>
+          <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 space-y-1.5">
+            <div className="font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+              <Sparkles className="w-4 h-4 text-indigo-500" />
+              <span>步骤 3：一键建表与连接测试</span>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="p-4 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 space-y-1.5">
-                <div className="font-bold text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
-                  <Sparkles className="w-4 h-4 text-indigo-500" />
-                  <span>方式 A（最简推荐）</span>
-                </div>
-                <p className="text-[11px] text-indigo-700 dark:text-indigo-300">
-                  部署 Worker 后，在上方填入 Worker URL，直接点击顶部【初始化表结构】按钮，Worker 会远程自动创建 8 张数据表与索引。
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-1.5">
-                <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                  <Globe className="w-4 h-4 text-zinc-500" />
-                  <span>方式 B（控制台执行）</span>
-                </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                  登录 Cloudflare 控制台 → 进入 D1 Database → 点击你的数据库 → 切换到 <b>Console</b> → 粘贴「完整建表 SQL」执行。
-                </p>
-              </div>
-
-              <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-1.5">
-                <div className="font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                  <Terminal className="w-4 h-4 text-zinc-500" />
-                  <span>方式 C（Wrangler 迁移）</span>
-                </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-mono">
-                  npx wrangler d1 execute qiyue_ledger_d1 --file=./schema.sql --remote
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* 步骤四：部署 Worker 并应用 */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-bold text-zinc-900 dark:text-zinc-100">
-              <span className="w-6 h-6 rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 flex items-center justify-center text-xs font-mono">
-                4
-              </span>
-              <span>发布部署 Worker 并连接账本</span>
-            </div>
-            <div className="p-4 rounded-xl bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 space-y-2">
-              <p>进入 <code className="font-mono text-zinc-800 dark:text-zinc-200">worker/</code> 目录并执行发布：</p>
-              <pre className="p-3 rounded-xl bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto select-all">
-                npx wrangler deploy
-              </pre>
-              <p className="text-[11px] text-zinc-400">
-                发布完成后，将获得的 Worker URL（如 <code className="font-mono text-zinc-600 dark:text-zinc-300">https://qiyue-ledger-api.xxx.workers.dev</code>）与 AUTH_TOKEN 填入上方【连接设置】中，即可享受秒级全球同步！
-              </p>
-            </div>
+            <p className="text-indigo-700 dark:text-indigo-300 text-[11px]">
+              部署成功后，在上方「连接设置」填入 Worker API URL 和密钥，点击顶部【初始化表结构】按钮即可全自动建立 8 张数据表！
+            </p>
           </div>
         </div>
-      )}
 
-      {/* 4. SQL 手动执行面板 */}
-      {activeTab === 'sql' && (
-        <div className="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4 text-xs">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-3">
-            <div>
-              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <Code2 className="w-4 h-4 text-indigo-500" />
-                <span>Cloudflare D1 完整建表 SQL 语句 (Schema v2)</span>
-              </h3>
-              <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
-                可直接复制下方 SQL，在 Cloudflare 控制台（D1 Database → 你的数据库 → Console）中一键粘贴执行。
-              </p>
+        {/* 可折叠的完整 D1 建表 SQL 语句 */}
+        <div className="border-t border-zinc-100 dark:border-zinc-800 pt-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Code2 className="w-4 h-4 text-zinc-500" />
+              <span className="font-bold text-zinc-900 dark:text-zinc-100">D1 完整建表 SQL 语句 (Schema v2)</span>
             </div>
-
-            <button
-              onClick={handleCopySql}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 text-xs font-semibold shadow-xs transition-colors cursor-pointer shrink-0"
-            >
-              {copiedSql ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedSql ? '已复制 SQL' : '一键复制完整 SQL'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowSqlPreview(!showSqlPreview)}
+                className="text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 underline text-[11px] cursor-pointer"
+              >
+                {showSqlPreview ? '收起 SQL 源码' : '展开 SQL 源码'}
+              </button>
+              <button
+                onClick={handleCopySql}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-medium text-[11px] cursor-pointer"
+              >
+                {copiedSql ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedSql ? '已复制' : '复制 SQL'}</span>
+              </button>
+            </div>
           </div>
 
-          <div className="p-4 rounded-xl bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto max-h-96 border border-zinc-800 select-all">
-            <pre className="whitespace-pre">{CLOUDFLARE_D1_SCHEMA_SQL}</pre>
-          </div>
+          {showSqlPreview && (
+            <div className="p-3.5 rounded-xl bg-zinc-950 text-zinc-200 font-mono text-[11px] overflow-x-auto max-h-80 border border-zinc-800 select-all">
+              <pre className="whitespace-pre">{CLOUDFLARE_D1_SCHEMA_SQL}</pre>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
