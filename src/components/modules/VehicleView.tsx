@@ -666,28 +666,28 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
       </div>
 
       {/* 4 核心车辆状态卡片 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
           <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">当前表显总里程</span>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-2">
+          <div className="text-lg sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-1.5 sm:mt-2">
             {healthStatus.currentOdometer.toLocaleString()} <span className="text-xs font-normal text-zinc-400">km</span>
           </div>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
           <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">保养健康状况预警</span>
-          <div className="mt-2 flex items-center gap-1.5">
+          <div className="mt-1.5 sm:mt-2 flex items-center gap-1.5">
             {healthStatus.status === 'overdue' ? (
-              <span className="text-rose-600 font-bold text-sm flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" /> 超期超程
+              <span className="text-rose-600 font-bold text-xs sm:text-sm flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 超期超程
               </span>
             ) : healthStatus.status === 'warning' ? (
-              <span className="text-amber-600 font-bold text-sm flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" /> 临近保养
+              <span className="text-amber-600 font-bold text-xs sm:text-sm flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 临近保养
               </span>
             ) : (
-              <span className="text-emerald-600 dark:text-emerald-400 font-bold text-sm flex items-center gap-1">
-                <CheckCircle2 className="w-4 h-4" /> 状态良好
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs sm:text-sm flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> 状态良好
               </span>
             )}
           </div>
@@ -696,11 +696,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
           </div>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
           <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
             {currentVehicle.fuelType === 'electric' ? '综合百公里电耗' : '综合百公里油耗'}
           </span>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-2">
+          <div className="text-lg sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-1.5 sm:mt-2">
             {avgFuelEconomy.toFixed(1)} <span className="text-xs font-normal text-zinc-400">{currentVehicle.fuelType === 'electric' ? 'kWh/100km' : 'L/100km'}</span>
           </div>
           <div className="text-[10px] text-zinc-400 mt-1">
@@ -708,9 +708,9 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
           </div>
         </div>
 
-        <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
+        <div className="p-3.5 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs">
           <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">累计用车支出</span>
-          <div className="text-xl sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-2">
+          <div className="text-lg sm:text-2xl font-bold font-mono text-zinc-900 dark:text-zinc-100 mt-1.5 sm:mt-2">
             {formatCurrency(totalFuelCost + totalMaintCost, hidePrivacy)}
           </div>
           <div className="text-[10px] text-zinc-400 mt-1">
@@ -781,70 +781,105 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
               暂无该车辆的补能记录，点击右上角「记一笔补能」开始记录
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-zinc-50/80 dark:bg-zinc-800/40 text-zinc-400 border-b border-zinc-200/80 dark:border-zinc-800/80 font-medium">
-                  <tr>
-                    <th className="py-3 px-4">日期</th>
-                    <th className="py-3 px-4">表显里程</th>
-                    <th className="py-3 px-4">充/加油量</th>
-                    <th className="py-3 px-4">单价</th>
-                    <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">实付金额</th>
-                    <th className="py-3 px-4">能耗核算</th>
-                    <th className="py-3 px-4">站点/类型</th>
-                    <th className="py-3 px-4">备注</th>
-                    <th className="py-3 px-4 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                  {vehicleFuels.map((f) => (
-                    <tr key={f.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
-                      <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
-                        {f.date}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
-                        {f.odometer.toLocaleString()} km
-                      </td>
-                      <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
-                        {f.fuelAmount} {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-zinc-500">
-                        ¥{f.unitPrice.toFixed(2)}
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-zinc-900 dark:text-zinc-100">
-                        {formatCurrency(f.totalCost, hidePrivacy)}
-                      </td>
-                      <td className="py-3 px-4">
-                        {f.calculatedFuelEconomy ? (
-                          <div className="space-y-0.5">
-                            <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
-                              {f.calculatedFuelEconomy.toFixed(1)} {currentVehicle.fuelType === 'electric' ? 'kWh/100km' : 'L/100km'}
-                            </span>
-                            {f.costPerKm && (
-                              <div className="text-[10px] text-zinc-400">
-                                约 ¥{f.costPerKm.toFixed(2)}/km
-                              </div>
-                            )}
+            <>
+              {/* 移动端窄屏精简卡片流 */}
+              <div className="block lg:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                {vehicleFuels.map((f) => {
+                  const isElectric = currentVehicle.fuelType === 'electric' || f.fuelType?.includes('电');
+                  return (
+                    <div
+                      key={f.id}
+                      className="p-3.5 sm:p-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors space-y-2.5"
+                    >
+                      {/* 顶部行：日期、站点、加满标识与实付总额 */}
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                              isElectric
+                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400'
+                                : 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400'
+                            }`}
+                          >
+                            {isElectric ? <Zap className="w-4 h-4" /> : <Fuel className="w-4 h-4" />}
                           </div>
-                        ) : (
-                          <span className="text-zinc-400 text-[11px]">- (首笔/累计中)</span>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-zinc-600 dark:text-zinc-400">
-                        <div className="font-medium">{f.station || '-'}</div>
-                        <div className="text-[10px] text-zinc-400">{f.fuelType}</div>
-                      </td>
-                      <td className="py-3 px-4 text-zinc-500 max-w-xs truncate">
-                        {f.notes || '-'}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100 text-xs">
+                                {f.date}
+                              </span>
+                              {f.station && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]">
+                                  {f.station}
+                                </span>
+                              )}
+                              {f.isFullTank && (
+                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50">
+                                  加满
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-zinc-400 truncate mt-0.5">
+                              {f.fuelType || (isElectric ? '快充直流电' : '95# 汽油')}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
+                            {formatCurrency(f.totalCost, hidePrivacy)}
+                          </div>
+                          <div className="text-[10px] text-zinc-400 font-mono">
+                            ¥{f.unitPrice.toFixed(2)}/{isElectric ? 'kWh' : 'L'}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* 核心指标网格：表显里程、充加量、百公里能耗 */}
+                      <div className="grid grid-cols-3 gap-1.5 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 text-[11px]">
+                        <div>
+                          <span className="text-zinc-400 text-[10px] block">表显里程</span>
+                          <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                            {f.odometer.toLocaleString()} <span className="text-[9px] font-normal text-zinc-400">km</span>
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 text-[10px] block">{isElectric ? '充电量' : '加油量'}</span>
+                          <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                            {f.fuelAmount} <span className="text-[9px] font-normal text-zinc-400">{isElectric ? 'kWh' : 'L'}</span>
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 text-[10px] block">百公里能耗</span>
+                          {f.calculatedFuelEconomy ? (
+                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              {f.calculatedFuelEconomy.toFixed(1)} <span className="text-[9px] font-normal">{isElectric ? 'kWh' : 'L'}</span>
+                            </span>
+                          ) : (
+                            <span className="text-zinc-400 text-[10px]">累计中</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* 底部备注与快捷操作 */}
+                      <div className="flex items-center justify-between pt-0.5 text-xs">
+                        <div className="text-[11px] text-zinc-400 truncate pr-2">
+                          {f.notes ? (
+                            <span className="text-zinc-600 dark:text-zinc-400">“{f.notes}”</span>
+                          ) : f.costPerKm ? (
+                            `约 ¥${f.costPerKm.toFixed(2)}/km`
+                          ) : (
+                            ''
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
                           <button
                             onClick={() => handleOpenEditFuel(f)}
-                            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
-                            title="编辑"
+                            className="px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] flex items-center gap-1 cursor-pointer"
                           >
-                            <Edit2 className="w-3.5 h-3.5" />
+                            <Edit2 className="w-3 h-3" />
+                            <span>编辑</span>
                           </button>
                           <button
                             onClick={() => {
@@ -852,18 +887,103 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                                 onDeleteFuel(f.id);
                               }
                             }}
-                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
+                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
                             title="删除"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      </td>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* 桌面/宽屏端完整数据表格 */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-zinc-50/80 dark:bg-zinc-800/40 text-zinc-400 border-b border-zinc-200/80 dark:border-zinc-800/80 font-medium">
+                    <tr>
+                      <th className="py-3 px-4">日期</th>
+                      <th className="py-3 px-4">表显里程</th>
+                      <th className="py-3 px-4">充/加油量</th>
+                      <th className="py-3 px-4">单价</th>
+                      <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">实付金额</th>
+                      <th className="py-3 px-4">能耗核算</th>
+                      <th className="py-3 px-4">站点/类型</th>
+                      <th className="py-3 px-4">备注</th>
+                      <th className="py-3 px-4 text-right">操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                    {vehicleFuels.map((f) => (
+                      <tr key={f.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+                        <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
+                          {f.date}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
+                          {f.odometer.toLocaleString()} km
+                        </td>
+                        <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
+                          {f.fuelAmount} {currentVehicle.fuelType === 'electric' ? 'kWh' : 'L'}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-zinc-500">
+                          ¥{f.unitPrice.toFixed(2)}
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                          {formatCurrency(f.totalCost, hidePrivacy)}
+                        </td>
+                        <td className="py-3 px-4">
+                          {f.calculatedFuelEconomy ? (
+                            <div className="space-y-0.5">
+                              <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">
+                                {f.calculatedFuelEconomy.toFixed(1)} {currentVehicle.fuelType === 'electric' ? 'kWh/100km' : 'L/100km'}
+                              </span>
+                              {f.costPerKm && (
+                                <div className="text-[10px] text-zinc-400">
+                                  约 ¥{f.costPerKm.toFixed(2)}/km
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-zinc-400 text-[11px]">- (首笔/累计中)</span>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-zinc-600 dark:text-zinc-400">
+                          <div className="font-medium">{f.station || '-'}</div>
+                          <div className="text-[10px] text-zinc-400">{f.fuelType}</div>
+                        </td>
+                        <td className="py-3 px-4 text-zinc-500 max-w-xs truncate">
+                          {f.notes || '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenEditFuel(f)}
+                              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                              title="编辑"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`确定删除 ${f.date} 的这笔补能记录吗？`)) {
+                                  onDeleteFuel(f.id);
+                                }
+                              }}
+                              className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
+                              title="删除"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}
@@ -876,84 +996,153 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
               暂无该车辆的维保记录，点击右上角「记一笔维保」开始记录
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-zinc-50/80 dark:bg-zinc-800/40 text-zinc-400 border-b border-zinc-200/80 dark:border-zinc-800/80 font-medium">
-                  <tr>
-                    <th className="py-3 px-4">维保日期</th>
-                    <th className="py-3 px-4">分类</th>
-                    <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">维保项目</th>
-                    <th className="py-3 px-4">服务门店</th>
-                    <th className="py-3 px-4">表显里程</th>
-                    <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">总费用</th>
-                    <th className="py-3 px-4">下次建议</th>
-                    <th className="py-3 px-4 text-right">操作</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                  {vehicleMaintenances.map((m) => (
-                    <tr key={m.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
-                      <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
-                        {m.date}
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-700 dark:text-zinc-300">
+            <>
+              {/* 移动端窄屏精简维保卡片流 */}
+              <div className="block lg:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                {vehicleMaintenances.map((m) => (
+                  <div
+                    key={m.id}
+                    className="p-3.5 sm:p-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors space-y-2.5"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-semibold text-zinc-700 dark:text-zinc-300 shrink-0">
                           {categoryLabels[m.category] || m.category}
                         </span>
-                      </td>
-                      <td className="py-3 px-4 text-zinc-900 dark:text-zinc-100 font-medium">
-                        <div>{m.title}</div>
-                        {m.items && m.items.length > 0 && (
-                          <div className="text-[10px] text-zinc-400 mt-0.5">
-                            {m.items.join(' / ')}
+                        <div className="min-w-0">
+                          <div className="font-bold text-zinc-900 dark:text-zinc-100 text-xs truncate">
+                            {m.title}
                           </div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 text-zinc-600 dark:text-zinc-400">
-                        {m.shopName || '-'}
-                      </td>
-                      <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
-                        {m.odometer.toLocaleString()} km
-                      </td>
-                      <td className="py-3 px-4 font-mono font-bold text-zinc-900 dark:text-zinc-100">
-                        {formatCurrency(m.totalCost, hidePrivacy)}
-                      </td>
-                      <td className="py-3 px-4 text-[11px] text-zinc-500">
-                        {m.nextServiceOdometer ? (
-                          <div>{m.nextServiceOdometer.toLocaleString()} km</div>
-                        ) : null}
-                        {m.nextServiceDate ? (
-                          <div className="text-zinc-400">{m.nextServiceDate}</div>
-                        ) : null}
-                        {!m.nextServiceOdometer && !m.nextServiceDate && '-'}
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => handleOpenEditMaint(m)}
-                            className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
-                            title="编辑"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
-                                onDeleteMaintenance(m.id);
-                              }
-                            }}
-                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
-                            title="删除"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                            {m.date} · {m.shopName || '维保门店'}
+                          </div>
                         </div>
-                      </td>
+                      </div>
+
+                      <div className="text-right shrink-0">
+                        <div className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
+                          {formatCurrency(m.totalCost, hidePrivacy)}
+                        </div>
+                      </div>
+                    </div>
+
+                    {m.items && m.items.length > 0 && (
+                      <div className="text-[11px] text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
+                        {m.items.join(' / ')}
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between pt-0.5 text-xs">
+                      <div className="text-[10px] text-zinc-400 truncate pr-2">
+                        {m.odometer ? `表显: ${m.odometer.toLocaleString()} km` : ''}
+                        {m.nextServiceOdometer ? ` · 下次: ${m.nextServiceOdometer.toLocaleString()} km` : ''}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => handleOpenEditMaint(m)}
+                          className="px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] flex items-center gap-1 cursor-pointer"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                          <span>编辑</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
+                              onDeleteMaintenance(m.id);
+                            }
+                          }}
+                          className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                          title="删除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 桌面/宽屏端完整数据表格 */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-zinc-50/80 dark:bg-zinc-800/40 text-zinc-400 border-b border-zinc-200/80 dark:border-zinc-800/80 font-medium">
+                    <tr>
+                      <th className="py-3 px-4">维保日期</th>
+                      <th className="py-3 px-4">分类</th>
+                      <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">维保项目</th>
+                      <th className="py-3 px-4">服务门店</th>
+                      <th className="py-3 px-4">表显里程</th>
+                      <th className="py-3 px-4 font-semibold text-zinc-900 dark:text-zinc-100">总费用</th>
+                      <th className="py-3 px-4">下次建议</th>
+                      <th className="py-3 px-4 text-right">操作</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+                    {vehicleMaintenances.map((m) => (
+                      <tr key={m.id} className="hover:bg-zinc-50/50 dark:hover:bg-zinc-800/20 transition-colors">
+                        <td className="py-3 px-4 font-mono font-medium text-zinc-700 dark:text-zinc-300">
+                          {m.date}
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-medium text-zinc-700 dark:text-zinc-300">
+                            {categoryLabels[m.category] || m.category}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-zinc-900 dark:text-zinc-100 font-medium">
+                          <div>{m.title}</div>
+                          {m.items && m.items.length > 0 && (
+                            <div className="text-[10px] text-zinc-400 mt-0.5">
+                              {m.items.join(' / ')}
+                            </div>
+                          )}
+                        </td>
+                        <td className="py-3 px-4 text-zinc-600 dark:text-zinc-400">
+                          {m.shopName || '-'}
+                        </td>
+                        <td className="py-3 px-4 font-mono text-zinc-600 dark:text-zinc-400">
+                          {m.odometer.toLocaleString()} km
+                        </td>
+                        <td className="py-3 px-4 font-mono font-bold text-zinc-900 dark:text-zinc-100">
+                          {formatCurrency(m.totalCost, hidePrivacy)}
+                        </td>
+                        <td className="py-3 px-4 text-[11px] text-zinc-500">
+                          {m.nextServiceOdometer ? (
+                            <div>{m.nextServiceOdometer.toLocaleString()} km</div>
+                          ) : null}
+                          {m.nextServiceDate ? (
+                            <div className="text-zinc-400">{m.nextServiceDate}</div>
+                          ) : null}
+                          {!m.nextServiceOdometer && !m.nextServiceDate && '-'}
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => handleOpenEditMaint(m)}
+                              className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                              title="编辑"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
+                                  onDeleteMaintenance(m.id);
+                                }
+                              }}
+                              className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
+                              title="删除"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </div>
       )}
