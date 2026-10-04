@@ -1,5 +1,5 @@
 import { getCorsHeaders, verifyAuthorization } from './auth';
-import { ensureD1Schema } from './schema';
+import { ensureD1Schema, inspectAndRepairD1Schema } from './schema';
 import { Env, SyncPayload, D1PreparedStatement } from './types';
 import { createErrorResponse, createSuccessResponse, validateSyncPayload } from './validation';
 
@@ -93,13 +93,16 @@ export default {
     try {
       // 自动确保 D1 表结构已就绪 (自愈机制)
       await ensureD1Schema(env.DB);
-      // 3.1 手动一键初始化/修复表结构端点 (POST /api/init)
-      if (request.method === 'POST' && url.pathname === '/api/init') {
-        const ok = await ensureD1Schema(env.DB);
+      // 3.1 手动一键初始化/检查/修复表结构端点
+      if (
+        (request.method === 'POST' && (url.pathname === '/api/init' || url.pathname === '/api/schema/repair')) ||
+        (request.method === 'GET' && url.pathname === '/api/schema/inspect')
+      ) {
+        const inspectRes = await inspectAndRepairD1Schema(env.DB);
         return createSuccessResponse(
           {
-            initialized: ok,
-            message: ok ? 'D1 数据库表结构已全部初始化就绪' : '初始化执行失败',
+            initialized: inspectRes.ok,
+            ...inspectRes,
           },
           requestId,
           corsHeaders

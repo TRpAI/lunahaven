@@ -29,15 +29,17 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { AppSettings, LedgerFullData } from '../../types';
+import { AppSettings, FuelRecord, LedgerFullData } from '../../types';
 import {
   checkCloudflareHealth,
   CLOUDFLARE_D1_SCHEMA_SQL,
   generateCloudflareD1SqlDump,
   initCloudflareD1Database,
   pullFromCloudflareWorker,
+  SchemaInspectionResult,
 } from '../../utils/d1Sync';
 import { triggerFileDownload } from '../../utils/exportImport';
+import { processFuelRecords } from '../../utils/fuelCalculator';
 
 interface CloudflareD1ViewProps {
   settings: AppSettings;
@@ -80,6 +82,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   } | null>(null);
 
   const [initLoading, setInitLoading] = useState(false);
+  const [inspectionResult, setInspectionResult] = useState<SchemaInspectionResult | null>(null);
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedWrangler, setCopiedWrangler] = useState(false);
   const [showSqlPreview, setShowSqlPreview] = useState(false);
@@ -191,7 +194,8 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     setInitLoading(true);
     try {
       const res = await initCloudflareD1Database(url, token);
-      showToast('success', `🎉 ${res.message || 'D1 数据库表结构已全部初始化就绪！'}`);
+      setInspectionResult(res);
+      showToast('success', `🎉 ${res.message || 'D1 数据库表结构已全部初始化与自愈就绪！'}`);
       handleRunHealthCheck();
     } catch (err: any) {
       showToast('error', `初始化失败: ${err.message}`);
@@ -232,23 +236,112 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         },
       };
 
+      // 1. 智能安全合并 Fuels：保全本地真实的黄灯报警与漏记标志（防止云端旧结构将黄灯覆盖为 false）
+      const localFuelMap = new Map((fullData.fuels || []).map((f) => [f.id, f]));
+      const seenFuelIds = new Set<string>();
+      const mergedFuels: FuelRecord[] = ((pulled.fuels as any[]) || []).map((pf) => {
+        seenFuelIds.add(pf.id);
+        const lf = localFuelMap.get(pf.id);
+        if (lf) {
+          return {
+            ...pf,
+            // 若云端为 false 或空缺，但本地曾记录为 true，优先保留本地真实的黄灯报警
+            isWarningLightOn: Boolean(pf.isWarningLightOn || lf.isWarningLightOn),
+            isMissedPrevious: Boolean(pf.isMissedPrevious || lf.isMissedPrevious),
+            isFullTank: pf.isFullTank !== undefined ? pf.isFullTank : (lf.isFullTank ?? true),
+          };
+        }
+        return pf;
+      });
+      for (const lf of fullData.fuels || []) {
+        if (!seenFuelIds.has(lf.id)) {
+          mergedFuels.push(lf);
+        }
+      }
+      const processedFuels = processFuelRecords(mergedFuels);
+
+      // 2. 智能安全合并 Expenses：保全 direction (资金流向)
+      const localExpMap = new Map((fullData.expenses || []).map((e) => [e.id, e]));
+      const seenExpIds = new Set<string>();
+      const mergedExpenses = ((pulled.expenses as any[]) || []).map((pe) => {
+        seenExpIds.add(pe.id);
+        const le = localExpMap.get(pe.id);
+        if (le) {
+          return {
+            ...pe,
+            direction: pe.direction || le.direction || 'out',
+          };
+        }
+        return pe;
+      });
+      for (const le of fullData.expenses || []) {
+        if (!seenExpIds.has(le.id)) {
+          mergedExpenses.push(le);
+        }
+      }
+
+      // 3. 智能安全合并 Vehicles
+      const localVehMap = new Map((fullData.vehicles || []).map((v) => [v.id, v]));
+      const seenVehIds = new Set<string>();
+      const mergedVehicles = ((pulled.vehicles as any[]) || []).map((pv) => {
+        seenVehIds.add(pv.id);
+        const lv = localVehMap.get(pv.id);
+        if (lv) {
+          return {
+            ...lv,
+            ...pv,
+            currentOdometer: Math.max(pv.currentOdometer || 0, lv.currentOdometer || 0),
+          };
+        }
+        return pv;
+      });
+      for (const lv of fullData.vehicles || []) {
+        if (!seenVehIds.has(lv.id)) {
+          mergedVehicles.push(lv);
+        }
+      }
+
+      // 4. 通用列表保全合并 (保留本地未推送到云端的新增记录)
+      const mergeById = <T extends { id: string }>(localList: T[], pulledList: T[]): T[] => {
+        const localMap = new Map(localList.map((item) => [item.id, item]));
+        const seen = new Set<string>();
+        const resList: T[] = [];
+        for (const item of pulledList) {
+          seen.add(item.id);
+          const localItem = localMap.get(item.id);
+          resList.push(localItem ? { ...localItem, ...item } : item);
+        }
+        for (const item of localList) {
+          if (!seen.has(item.id)) {
+            resList.push(item);
+          }
+        }
+        return resList;
+      };
+
+      const mergedSalaries = mergeById(fullData.salaries || [], (pulled.salaries as any[]) || []);
+      const mergedOvertimes = mergeById(fullData.overtimes || [], (pulled.overtimes as any[]) || []);
+      const mergedGifts = mergeById(fullData.gifts || [], (pulled.gifts as any[]) || []);
+      const mergedMaintenances = mergeById(fullData.maintenances || [], (pulled.maintenances as any[]) || []);
+
       onImportData({
         ...fullData,
-        salaries: (pulled.salaries as any) || fullData.salaries,
-        overtimes: (pulled.overtimes as any) || fullData.overtimes,
-        expenses: (pulled.expenses as any) || fullData.expenses,
-        gifts: (pulled.gifts as any) || fullData.gifts,
-        vehicles: (pulled.vehicles as any) || fullData.vehicles,
-        fuels: (pulled.fuels as any) || fullData.fuels,
-        maintenances: (pulled.maintenances as any) || fullData.maintenances,
+        salaries: mergedSalaries,
+        overtimes: mergedOvertimes,
+        expenses: mergedExpenses,
+        gifts: mergedGifts,
+        vehicles: mergedVehicles,
+        fuels: processedFuels,
+        maintenances: mergedMaintenances,
         settings: updatedSettings,
         syncMeta: pulled.syncMeta || fullData.syncMeta,
       });
+
       setPullMsg({
         ok: true,
-        text: `已从 D1 成功同步最新云端数据 (${res.isIncremental ? '增量合并' : '全量同步'})`,
+        text: `已从 D1 成功同步最新云端数据 (${res.isIncremental ? '增量合并' : '全量同步'})，已智能保全油表黄灯报警等本地标记`,
       });
-      showToast('success', '已从云端 D1 成功拉取并合并最新数据');
+      showToast('success', '已从云端 D1 成功拉取并智能保全最新数据');
     } catch (err: any) {
       setPullMsg({ ok: false, text: `拉取失败: ${err.message}` });
       showToast('error', `拉取失败: ${err.message}`);
@@ -393,15 +486,15 @@ ALLOWED_ORIGIN = "*"`;
         {/* 核心操作按钮组：初始化表结构 / 同步 / 拉取 / 健康 / 导出 (移动端 2-3 列响应式网格排布) */}
         <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 w-full">
-            {/* 1. 初始化表结构 */}
+            {/* 1. 检查与自愈表结构 */}
             <button
               onClick={handleInitRemoteDatabase}
               disabled={initLoading || !hasConfig}
               className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 text-white disabled:text-zinc-400 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed min-w-0"
-              title={hasConfig ? '远程初始化 D1 数据库 8 张表结构' : '请先配置 Worker URL'}
+              title={hasConfig ? '远程检测与自愈 D1 数据库 10 张表结构及最新字段' : '请先配置 Worker URL'}
             >
               <Sparkles className={`w-3.5 h-3.5 shrink-0 ${initLoading ? 'animate-spin' : ''}`} />
-              <span className="truncate">{initLoading ? '初始化中' : '初始化表结构'}</span>
+              <span className="truncate">{initLoading ? '检测自愈中' : '检查/自愈表结构'}</span>
             </button>
 
             {/* 2. 立即同步 */}
@@ -682,6 +775,39 @@ ALLOWED_ORIGIN = "*"`;
               <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">就绪</span>
             </div>
           </div>
+
+          {/* D1 数据库完整性检查与自动修复结果报告 */}
+          {inspectionResult && (
+            <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 text-xs space-y-2 animate-in fade-in duration-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-bold text-indigo-900 dark:text-indigo-200">
+                  <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>D1 权威表结构检查与自愈报告</span>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                  {inspectionResult.tablesChecked} 张表已核查
+                </span>
+              </div>
+              <p className="text-indigo-700 dark:text-indigo-300 text-[11px] leading-relaxed">
+                {inspectionResult.message}
+              </p>
+              {inspectionResult.missingColumnsAdded.length > 0 && (
+                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-[11px]">
+                  <b>✅ 已自动修复缺失字段：</b>
+                  <span className="font-mono ml-1">{inspectionResult.missingColumnsAdded.join(', ')}</span>
+                </div>
+              )}
+              {inspectionResult.missingTablesCreated.length > 0 && (
+                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-[11px]">
+                  <b>✅ 已自动创建缺失表：</b>
+                  <span className="font-mono ml-1">{inspectionResult.missingTablesCreated.join(', ')}</span>
+                </div>
+              )}
+              <div className="text-[10px] text-indigo-600/80 dark:text-indigo-400/80 flex items-center gap-1">
+                <span>💡 包含油表黄灯报警 (is_warning_light_on)、漏记补能 (is_missed_previous)、支出方向 (direction) 等全量字段</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

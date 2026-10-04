@@ -1,7 +1,9 @@
--- ==========================================
--- 栖月账本 (Qiyue Ledger) D1 数据库迁移 0001
--- 表结构初始化 (包含 updated_at 与 deleted_at)
--- ==========================================
+-- ========================================================
+-- 栖月账本 (Qiyue Ledger) Cloudflare D1 生产级完整数据库 Schema
+-- SQLite Dialect for Cloudflare D1 Database (全量 10 表结构)
+-- 包含：油表黄灯报警、漏记补能、开销流向、调休记录、审计日志与版本元数据
+-- 运行命令：npx wrangler d1 execute <DB_NAME> --file=schema.sql
+-- ========================================================
 
 -- 1. 工资与五险一金明细表
 CREATE TABLE IF NOT EXISTS salaries (
@@ -107,7 +109,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     deleted_at TEXT
 );
 
--- 5. 加油与充电记录表
+-- 5. 加油与充电记录表 (包含油表黄灯报警与漏记标志)
 CREATE TABLE IF NOT EXISTS fuel_records (
     id TEXT PRIMARY KEY,
     vehicle_id TEXT NOT NULL,
@@ -153,16 +155,72 @@ CREATE TABLE IF NOT EXISTS maintenance_records (
     FOREIGN KEY(vehicle_id) REFERENCES vehicles(id) ON DELETE CASCADE
 );
 
--- 7. 用户隐私与偏好配置表
+-- 7. 日常生活、医疗、教育与综合支出表 (包含 direction 字段)
+CREATE TABLE IF NOT EXISTS expenses (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,                 -- YYYY-MM-DD
+    type TEXT NOT NULL,                 -- living / medical / gift / education / travel
+    category TEXT NOT NULL,             -- 细分项目
+    amount REAL NOT NULL,               -- 金额
+    direction TEXT DEFAULT 'out',       -- out / in
+    payer TEXT,
+    payment_method TEXT,
+    beneficiary TEXT,
+    remarks TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT,
+    deleted_at TEXT
+);
+
+-- 8. 用户隐私与偏好配置表
 CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
 );
 
--- 索引
-CREATE INDEX IF NOT EXISTS idx_salaries_month ON salaries(month);
-CREATE INDEX IF NOT EXISTS idx_overtimes_date ON overtimes(date);
-CREATE INDEX IF NOT EXISTS idx_social_gifts_date ON social_gifts(date);
-CREATE INDEX IF NOT EXISTS idx_fuel_vehicle_date ON fuel_records(vehicle_id, date);
-CREATE INDEX IF NOT EXISTS idx_maintenance_vehicle_date ON maintenance_records(vehicle_id, date);
+-- 9. 边缘同步元信息表 (sync_meta)
+CREATE TABLE IF NOT EXISTS sync_meta (
+    key TEXT PRIMARY KEY,               -- 'global'
+    revision INTEGER DEFAULT 1,         -- 数据版本号
+    schema_version INTEGER DEFAULT 2,   -- D1 结构版本
+    last_synced_at TEXT,
+    updated_at TEXT NOT NULL
+);
+
+-- 10. 生产操作审计日志表 (audit_logs)
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    action TEXT NOT NULL,
+    resource TEXT NOT NULL,
+    record_count INTEGER DEFAULT 0,
+    ip_hash TEXT,
+    user_agent TEXT,
+    created_at TEXT NOT NULL
+);
+
+-- 索引与复合索引加速
+CREATE INDEX IF NOT EXISTS idx_salaries_month_del ON salaries(month, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_salaries_updated ON salaries(updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_overtimes_date_del ON overtimes(date, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_overtimes_updated ON overtimes(updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_social_gifts_date_del ON social_gifts(date, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_social_gifts_updated ON social_gifts(updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_fuel_veh_date_del ON fuel_records(vehicle_id, date, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_fuel_updated ON fuel_records(updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_maint_veh_date_del ON maintenance_records(vehicle_id, date, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_maint_updated ON maintenance_records(updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_expenses_date_del ON expenses(date, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_expenses_type ON expenses(type);
+CREATE INDEX IF NOT EXISTS idx_expenses_updated ON expenses(updated_at);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
+
+-- 默认全局元数据记录
+INSERT OR IGNORE INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at)
+VALUES ('global', 1, 2, NULL, datetime('now'));

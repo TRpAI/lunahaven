@@ -365,13 +365,46 @@ export async function checkCloudflareHealth(workerUrl: string): Promise<{
   }
 }
 
+export interface TableInspectionDetail {
+  name: string;
+  exists: boolean;
+  columnCount: number;
+  columns: string[];
+  missingColumns: string[];
+}
+
+export interface SchemaInspectionResult {
+  ok: boolean;
+  status: string;
+  tablesChecked: number;
+  tableDetails: TableInspectionDetail[];
+  missingTablesCreated: string[];
+  missingColumnsAdded: string[];
+  message: string;
+}
+
+/**
+ * 宽松安全的布尔值解析器 (兼容 SQLite 0/1, 字符串 "0"/"1"/"true"/"false", 真实布尔及空缺处理)
+ */
+export function toBoolean(val: any, defaultVal = false): boolean {
+  if (val === undefined || val === null) return defaultVal;
+  if (typeof val === 'boolean') return val;
+  if (typeof val === 'number') return val === 1;
+  if (typeof val === 'string') {
+    const s = val.trim().toLowerCase();
+    if (s === '1' || s === 'true' || s === 'yes' || s === 'on') return true;
+    if (s === '0' || s === 'false' || s === 'no' || s === 'off') return false;
+  }
+  return Boolean(val);
+}
+
 /**
  * 远程一键调用 Worker 执行 D1 数据库结构全量初始化与修复
  */
 export async function initCloudflareD1Database(
   workerUrl: string,
   apiToken: string
-): Promise<{ initialized: boolean; message: string }> {
+): Promise<SchemaInspectionResult & { initialized: boolean; message: string }> {
   const cleanUrl = sanitizeWorkerUrl(workerUrl);
   const targetUrl = `${cleanUrl}/api/init`;
 
@@ -394,7 +427,47 @@ export async function initCloudflareD1Database(
     throw new Error(errorMsg);
   }
 
-  return json.data || { initialized: true, message: '初始化成功' };
+  return json.data || {
+    initialized: true,
+    ok: true,
+    status: 'healthy',
+    tablesChecked: 10,
+    tableDetails: [],
+    missingTablesCreated: [],
+    missingColumnsAdded: [],
+    message: '初始化成功',
+  };
+}
+
+/**
+ * 远程探测 D1 数据库 10 张表及关键字段完整性
+ */
+export async function inspectCloudflareD1Database(
+  workerUrl: string,
+  apiToken: string
+): Promise<SchemaInspectionResult> {
+  const cleanUrl = sanitizeWorkerUrl(workerUrl);
+  const targetUrl = `${cleanUrl}/api/schema/inspect`;
+
+  const headers: Record<string, string> = {
+    'X-Client-Version': '2.2.0',
+  };
+  if (apiToken && apiToken.trim()) {
+    headers['Authorization'] = `Bearer ${apiToken.trim()}`;
+  }
+
+  const res = await fetchWithTimeoutAndRetry(targetUrl, {
+    method: 'GET',
+    headers,
+  }, 12000, 1);
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.success) {
+    const errorMsg = json?.error?.message || json?.error || `HTTP ${res.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return json.data;
 }
 
 /**
@@ -718,9 +791,9 @@ export async function pullFromCloudflareWorker(
         fuelAmount: Number(f.fuel_amount ?? f.fuelAmount ?? 0),
         unitPrice: Number(f.unit_price ?? f.unitPrice ?? 0),
         totalCost: Number(f.total_cost ?? f.totalCost ?? 0),
-        isFullTank: f.is_full_tank === 1 || f.isFullTank === true,
-        isWarningLightOn: f.is_warning_light_on === 1 || f.isWarningLightOn === true,
-        isMissedPrevious: f.is_missed_previous === 1 || f.isMissedPrevious === true,
+        isFullTank: toBoolean(f.is_full_tank ?? f.isFullTank, true),
+        isWarningLightOn: toBoolean(f.is_warning_light_on ?? f.isWarningLightOn ?? f.warning_light, false),
+        isMissedPrevious: toBoolean(f.is_missed_previous ?? f.isMissedPrevious, false),
         station: f.station || '',
         fuelType: f.fuel_type || f.fuelType || '',
         calculatedFuelEconomy: f.calculated_fuel_economy ?? f.calculatedFuelEconomy,
