@@ -243,7 +243,7 @@ export function exportMaintenancesToCsv(maintenances: MaintenanceRecord[]): stri
 }
 
 /**
- * 导出版本化 JSON 备份
+ * 导出版本化 JSON 备份 (完整导出包含综合开支在内的全业务资产)
  */
 export function exportVersionedJson(data: LedgerFullData): string {
   const payload = {
@@ -254,6 +254,7 @@ export function exportVersionedJson(data: LedgerFullData): string {
     data: {
       salaries: data.salaries || [],
       overtimes: data.overtimes || [],
+      expenses: data.expenses || [],
       gifts: data.gifts || [],
       vehicles: data.vehicles || [],
       fuels: data.fuels || [],
@@ -266,10 +267,23 @@ export function exportVersionedJson(data: LedgerFullData): string {
 }
 
 /**
- * 解析并兼容导入版本化或旧版 JSON 账本备份
+ * 解析并兼容导入版本化或旧版 JSON 账本备份 (内置原型污染过滤与数据结构安全校验)
  */
 export function parseVersionedJson(jsonStr: string): LedgerFullData {
   const parsed = JSON.parse(jsonStr);
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('无效的 JSON 格式数据');
+  }
+
+  // 防范原型污染
+  if (
+    Object.prototype.hasOwnProperty.call(parsed, '__proto__') ||
+    Object.prototype.hasOwnProperty.call(parsed, 'constructor') ||
+    Object.prototype.hasOwnProperty.call(parsed, 'prototype')
+  ) {
+    throw new Error('导入失败：检测到恶意原型污染属性');
+  }
 
   // V2 格式规范
   if (parsed.format === 'qiyue-ledger' && parsed.data) {
@@ -306,7 +320,7 @@ export function parseVersionedJson(jsonStr: string): LedgerFullData {
     };
   }
 
-  throw new Error('未识别的备份文件格式，请确保是由栖月账本导出的 JSON 文件');
+  throw new Error('未识别的备份文件格式，请确保是由栖月账本导出的有效 JSON 文件');
 }
 
 /**

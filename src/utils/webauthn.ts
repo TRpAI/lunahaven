@@ -109,6 +109,19 @@ function formatWebAuthnError(err: any): string {
 }
 
 /**
+ * 安全获取当前域名的 RP ID (规范要求：IP 地址不能作为 rp.id，返回 undefined 让浏览器自动缺省为当前 Origin)
+ */
+function getSafeRpId(): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  const host = window.location.hostname;
+  if (!host) return undefined;
+  if (host === 'localhost') return 'localhost';
+  // IP 地址 (IPv4) 不得作为 WebAuthn rp.id，否则会引发 SecurityError 或 Credential Manager 异常
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host)) return undefined;
+  return host;
+}
+
+/**
  * 注册绑定本设备的生物识别凭据 (兼容 Android Credential Manager、iOS FaceID/TouchID 及 Windows Hello)
  */
 export async function registerBiometricCredential(
@@ -133,7 +146,7 @@ export async function registerBiometricCredential(
     { alg: -37, type: 'public-key' },  // PS256
   ];
 
-  const rpId = window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname;
+  const rpId = getSafeRpId();
 
   // 尝试创建凭据 (优先采用最佳兼容模式 userVerification: 'preferred' 解决 Android 14+ Credential Manager 崩溃问题)
   const createCredentialWithSelection = async (
@@ -225,7 +238,7 @@ export async function authenticateWithBiometrics(
     return { success: false, error: '当前环境不支持生物识别' };
   }
 
-  const rpId = window.location.hostname === 'localhost' ? 'localhost' : window.location.hostname;
+  const rpId = getSafeRpId();
 
   const runAuthentication = async (useCredentialsList: boolean): Promise<PublicKeyCredential | null> => {
     const challenge = new Uint8Array(32);

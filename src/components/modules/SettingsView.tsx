@@ -32,10 +32,12 @@ import {
   ShieldCheck,
   ShoppingBag,
   Smartphone,
+  Sparkles,
   Sun,
   Trash2,
   Upload,
   Wrench,
+  X,
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import { generateCloudflareD1SqlDump } from '../../utils/d1Sync';
@@ -47,6 +49,7 @@ import {
   exportMaintenancesToCsv,
   exportOvertimesToCsv,
   exportSalariesToCsv,
+  parseVersionedJson,
   triggerFileDownload,
 } from '../../utils/exportImport';
 import { TwoFactorSetupModal } from '../TwoFactorSetupModal';
@@ -102,6 +105,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [showBackupCodes, setShowBackupCodes] = useState(false);
   const [isCopiedBackups, setIsCopiedBackups] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    title: string;
+    desc: string;
+    onConfirm: () => void;
+    isDanger?: boolean;
+  } | null>(null);
+
+  const showToast = (type: 'success' | 'error' | 'info', text: string) => {
+    setToastMsg({ type, text });
+    setTimeout(() => {
+      setToastMsg((prev) => (prev?.text === text ? null : prev));
+    }, 4000);
+  };
 
   const is2FAActive = Boolean(settings.isTwoFactorEnabled && settings.twoFactorSecret);
   const backupCodesCount = settings.twoFactorBackupCodes?.length || 0;
@@ -117,21 +134,30 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           type: 'success',
           text: `🎉 生物识别已成功绑定 (${res.deviceName || '当前设备'})！下次可直接通过指纹/面容解锁。`,
         });
+        showToast('success', '生物识别身份凭据已成功绑定');
       } else {
         setBiometricMsg({ type: 'error', text: res.error || '绑定失败' });
+        showToast('error', res.error || '绑定失败');
       }
     } catch (err: any) {
       setBiometricMsg({ type: 'error', text: err.message || '绑定出错' });
+      showToast('error', err.message || '绑定出错');
     } finally {
       setBiometricLoading(false);
     }
   };
 
   const handleDisableBiometricsClick = () => {
-    if (window.confirm('确定要解绑并关闭当前设备的生物识别解锁功能吗？')) {
-      if (onDisableBiometrics) onDisableBiometrics();
-      setBiometricMsg({ type: 'success', text: '已解绑并关闭生物识别' });
-    }
+    setConfirmModal({
+      title: '解绑生物识别',
+      desc: '确定要解绑并关闭当前设备的生物识别解锁功能吗？解绑后仍可通过主密码解锁。',
+      isDanger: true,
+      onConfirm: () => {
+        if (onDisableBiometrics) onDisableBiometrics();
+        setBiometricMsg({ type: 'success', text: '已解绑并关闭生物识别' });
+        showToast('info', '已成功解绑并关闭生物识别功能');
+      },
+    });
   };
 
   const handleUpdatePassword = (e: React.FormEvent) => {
@@ -195,6 +221,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       `qiyue_ledger_backup_${new Date().toISOString().slice(0, 10)}.json`,
       'application/json;charset=utf-8'
     );
+    showToast('info', 'JSON 格式完整账本数据已生成导出');
   };
 
   const handleImportJson = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -205,14 +232,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     reader.onload = (evt) => {
       try {
         const text = evt.target?.result as string;
-        const parsed = JSON.parse(text);
-        if (!parsed.salaries && !parsed.overtimes && !parsed.gifts && !parsed.fuels) {
-          throw new Error('备份文件格式不符合预期');
-        }
+        const parsed = parseVersionedJson(text);
         onImportFullData(parsed);
-        alert('成功恢复并导入全部账本数据！');
+        showToast('success', '成功恢复并导入全部账本数据！');
       } catch (err: any) {
-        alert(`导入失败: ${err.message}`);
+        showToast('error', `导入失败: ${err.message}`);
       }
     };
     reader.readAsText(file);
@@ -229,7 +253,85 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-200 max-w-3xl mx-auto">
+    <div className="space-y-6 animate-in fade-in duration-200 max-w-3xl mx-auto relative">
+      {/* 实时非阻塞通知 Toast */}
+      {toastMsg && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-lg border text-xs flex items-center gap-2 animate-in slide-in-from-top-2 duration-200 ${
+            toastMsg.type === 'success'
+              ? 'bg-emerald-600 text-white border-emerald-500'
+              : toastMsg.type === 'error'
+              ? 'bg-rose-600 text-white border-rose-500'
+              : 'bg-zinc-900 text-white border-zinc-700'
+          }`}
+        >
+          {toastMsg.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+          ) : toastMsg.type === 'error' ? (
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+          ) : (
+            <Sparkles className="w-4 h-4 shrink-0" />
+          )}
+          <span>{toastMsg.text}</span>
+        </div>
+      )}
+
+      {/* 安全操作二次确认弹窗 (无 window.confirm) */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div
+                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  confirmModal.isDanger
+                    ? 'bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400'
+                    : 'bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400'
+                }`}
+              >
+                {confirmModal.isDanger ? (
+                  <AlertTriangle className="w-5 h-5" />
+                ) : (
+                  <ShieldCheck className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  {confirmModal.title}
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 leading-relaxed">
+                  {confirmModal.desc}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cb = confirmModal.onConfirm;
+                  setConfirmModal(null);
+                  cb();
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold shadow-xs cursor-pointer transition-colors ${
+                  confirmModal.isDanger
+                    ? 'bg-rose-600 hover:bg-rose-700 text-white'
+                    : 'bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900'
+                }`}
+              >
+                确认执行
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 2FA Setup Modal */}
       <TwoFactorSetupModal
         isOpen={is2FAModalOpen}
@@ -876,9 +978,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
           <button
             onClick={() => {
-              if (window.confirm('将清理所有离线 Service Worker 静态缓存并强制拉取生产最新版本，确定执行吗？（本地记账数据不会丢失）')) {
-                forceClearCacheAndReload();
-              }
+              setConfirmModal({
+                title: '强制更新与缓存重载',
+                desc: '将清理浏览器所有离线 Service Worker 静态缓存并强制拉取生产最新构建代码，确定执行吗？（本地记账数据完整保留）',
+                onConfirm: () => {
+                  forceClearCacheAndReload();
+                },
+              });
             }}
             className="flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 font-medium transition-colors cursor-pointer w-full sm:w-auto"
           >
@@ -897,9 +1003,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 w-full sm:w-auto">
           <button
             onClick={() => {
-              if (window.confirm('确定要重置为初始演示数据吗？当前数据将被覆盖。')) {
-                onResetDemo();
-              }
+              setConfirmModal({
+                title: '重置为初始演示数据',
+                desc: '确定要重置为初始演示数据吗？当前所有自定义账目将被示例数据覆盖替换。',
+                isDanger: true,
+                onConfirm: () => {
+                  onResetDemo();
+                  showToast('info', '已重置为初始演示数据');
+                },
+              });
             }}
             className="flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors cursor-pointer w-full sm:w-auto"
           >
@@ -908,9 +1020,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </button>
           <button
             onClick={() => {
-              if (window.confirm('警告：确定要清空全部账本数据吗？请确保已提前导出备份。')) {
-                onClearAll();
-              }
+              setConfirmModal({
+                title: '警告：彻底清空全部账本数据',
+                desc: '此操作将不可逆地彻底清空本地数据库中存储的所有工资、加班、人情、车辆及生活开支记录。请务必确保已提前导出备份！',
+                isDanger: true,
+                onConfirm: () => {
+                  onClearAll();
+                  showToast('error', '全部账本数据已清空');
+                },
+              });
             }}
             className="flex items-center justify-center gap-1.5 px-3.5 py-2 sm:py-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer w-full sm:w-auto"
           >

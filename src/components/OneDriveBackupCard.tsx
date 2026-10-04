@@ -65,6 +65,7 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
   const [isRestoring, setIsRestoring] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+  const [isDisconnectConfirmOpen, setIsDisconnectConfirmOpen] = useState(false);
 
   // Form State for configuration
   const [tokenInput, setTokenInput] = useState(config.accessToken || '');
@@ -231,7 +232,7 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
         text: `成功从 OneDrive 快照 (${file.name}) 完整恢复账本数据！`,
       });
     } catch (err: any) {
-      alert(`恢复失败: ${err.message}`);
+      setStatusMsg({ type: 'error', text: `恢复失败: ${err.message}` });
     } finally {
       setIsRestoring(false);
     }
@@ -241,7 +242,7 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
   const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tokenInput.trim()) {
-      alert('请输入 Access Token');
+      setStatusMsg({ type: 'error', text: '请输入 Access Token' });
       return;
     }
 
@@ -264,29 +265,28 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
       setIsConfigOpen(false);
       setStatusMsg({ type: 'success', text: `OneDrive 账户已成功连接 (${profile.displayName || profile.mail})！` });
     } catch (err: any) {
-      alert(`验证失败: ${err.message}，请确保 Token 包含 Files.ReadWrite 权限`);
+      setStatusMsg({ type: 'error', text: `验证失败: ${err.message}，请确保 Token 包含 Files.ReadWrite 权限` });
     }
   };
 
-  // 断开 OneDrive 连接
-  const handleDisconnect = () => {
-    if (window.confirm('确定要断开与微软 OneDrive 的连接吗？')) {
-      onUpdateSettings({
-        oneDriveConfig: {
-          ...config,
-          accessToken: '',
-          refreshToken: '',
-          userAccountEmail: '',
-          userName: '',
-          autoBackup: false,
-          lastBackupTime: null,
-          backupStatus: 'idle',
-        },
-      });
-      setUserProfile(null);
-      setTokenInput('');
-      setStatusMsg({ type: 'info', text: '已断开 OneDrive 账户连接' });
-    }
+  // 执行断开连接
+  const executeDisconnect = () => {
+    setIsDisconnectConfirmOpen(false);
+    onUpdateSettings({
+      oneDriveConfig: {
+        ...config,
+        accessToken: '',
+        refreshToken: '',
+        userAccountEmail: '',
+        userName: '',
+        autoBackup: false,
+        lastBackupTime: null,
+        backupStatus: 'idle',
+      },
+    });
+    setUserProfile(null);
+    setTokenInput('');
+    setStatusMsg({ type: 'info', text: '已断开 OneDrive 账户连接' });
   };
 
   return (
@@ -521,7 +521,7 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
               {isConnected && (
                 <button
                   type="button"
-                  onClick={handleDisconnect}
+                  onClick={() => setIsDisconnectConfirmOpen(true)}
                   className="px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-900/40 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 text-xs font-medium transition-colors cursor-pointer"
                 >
                   断开连接
@@ -529,6 +529,38 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
               )}
             </div>
           </form>
+        </div>
+      )}
+
+      {/* 断开连接确认弹窗 */}
+      {isDisconnectConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-sm p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                断开与微软 OneDrive 的连接？
+              </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                断开后将停止自动备份至微软云盘，本地记账数据不受任何影响。
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setIsDisconnectConfirmOpen(false)}
+                className="px-3.5 py-1.5 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={executeDisconnect}
+                className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
+              >
+                确认断开
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

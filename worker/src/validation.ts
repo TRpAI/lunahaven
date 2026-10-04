@@ -12,6 +12,20 @@ export function validateSyncPayload(payload: any): { valid: boolean; errors: Val
     return { valid: false, errors: [{ field: 'body', message: '请求载荷必须是合法的 JSON 对象' }] };
   }
 
+  // 防范原型污染攻击 (Prototype Pollution Protection)
+  const isDangerousObject = (obj: any): boolean => {
+    if (!obj || typeof obj !== 'object') return false;
+    return (
+      Object.prototype.hasOwnProperty.call(obj, '__proto__') ||
+      Object.prototype.hasOwnProperty.call(obj, 'constructor') ||
+      Object.prototype.hasOwnProperty.call(obj, 'prototype')
+    );
+  };
+
+  if (isDangerousObject(payload)) {
+    return { valid: false, errors: [{ field: 'security', message: '检测到非法原型属性篡改载荷' }] };
+  }
+
   // 1. 校验薪资 (Salaries)
   if (payload.salaries !== undefined) {
     if (!Array.isArray(payload.salaries)) {

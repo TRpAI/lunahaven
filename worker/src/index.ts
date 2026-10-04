@@ -456,13 +456,18 @@ export default {
         // 5. Fuel records
         if (Array.isArray(payload.fuels)) {
           for (const f of payload.fuels) {
+            const isFull = f.isFullTank !== undefined ? (f.isFullTank ? 1 : 0) : f.is_full_tank ?? 1;
+            const isWarning = f.isWarningLightOn !== undefined ? (f.isWarningLightOn ? 1 : 0) : f.is_warning_light_on ?? 0;
+            const isMissed = f.isMissedPrevious !== undefined ? (f.isMissedPrevious ? 1 : 0) : f.is_missed_previous ?? 0;
+
             statements.push(
               env.DB.prepare(
                 `INSERT INTO fuel_records (
                   id, vehicle_id, date, odometer, fuel_amount, unit_price, total_cost,
-                  is_full_tank, station, fuel_type, calculated_fuel_economy, cost_per_km,
-                  trip_distance, notes, created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  is_full_tank, is_warning_light_on, is_missed_previous, station, fuel_type,
+                  calculated_fuel_economy, cost_per_km, trip_distance, notes,
+                  created_at, updated_at, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   vehicle_id = excluded.vehicle_id,
                   date = excluded.date,
@@ -471,6 +476,8 @@ export default {
                   unit_price = excluded.unit_price,
                   total_cost = excluded.total_cost,
                   is_full_tank = excluded.is_full_tank,
+                  is_warning_light_on = excluded.is_warning_light_on,
+                  is_missed_previous = excluded.is_missed_previous,
                   station = excluded.station,
                   fuel_type = excluded.fuel_type,
                   calculated_fuel_economy = excluded.calculated_fuel_economy,
@@ -487,7 +494,9 @@ export default {
                 f.fuelAmount ?? f.fuel_amount ?? 0,
                 f.unitPrice ?? f.unit_price ?? 0,
                 f.totalCost ?? f.total_cost ?? 0,
-                f.isFullTank !== undefined ? (f.isFullTank ? 1 : 0) : f.is_full_tank ?? 1,
+                isFull,
+                isWarning,
+                isMissed,
                 f.station || '',
                 f.fuelType || f.fuel_type || '',
                 f.calculatedFuelEconomy ?? f.calculated_fuel_economy ?? null,
@@ -563,14 +572,15 @@ export default {
             statements.push(
               env.DB.prepare(
                 `INSERT INTO expenses (
-                  id, date, type, category, amount, payer, payment_method, beneficiary,
+                  id, date, type, category, amount, direction, payer, payment_method, beneficiary,
                   remarks, created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   date = excluded.date,
                   type = excluded.type,
                   category = excluded.category,
                   amount = excluded.amount,
+                  direction = excluded.direction,
                   payer = excluded.payer,
                   payment_method = excluded.payment_method,
                   beneficiary = excluded.beneficiary,
@@ -583,6 +593,7 @@ export default {
                 exp.type,
                 exp.category,
                 exp.amount ?? 0,
+                exp.direction || 'out',
                 exp.payer || '',
                 exp.paymentMethod || exp.payment_method || '',
                 exp.beneficiary || '',

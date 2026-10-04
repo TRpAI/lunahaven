@@ -157,6 +157,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
     beneficiary: '全家',
     remarks: '',
   });
+  const [formError, setFormError] = useState<string | null>(null);
 
   // 提取历史人情往来随礼对象/关系人列表，供快速下拉复用
   const frequentGiftContacts = useMemo(() => {
@@ -341,6 +342,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       remarks: '',
     });
     setIsModalOpen(true);
+    setFormError(null);
   };
 
   // Open modal for edit
@@ -357,6 +359,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
       beneficiary: record.beneficiary || '',
       remarks: record.remarks || '',
     });
+    setFormError(null);
     setIsModalOpen(true);
   };
 
@@ -364,7 +367,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.amount || Number(formData.amount) <= 0) {
-      alert(formData.type === 'gift' && formData.direction === 'in' ? '请输入有效的收礼金额' : '请输入有效的支出金额');
+      setFormError(formData.type === 'gift' && formData.direction === 'in' ? '请输入有效的收礼金额' : '请输入有效的支出金额');
       return;
     }
 
@@ -970,6 +973,19 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 
             {/* Modal Form */}
             <form onSubmit={handleSubmit} className="p-5 space-y-4 text-xs overflow-y-auto flex-1">
+              {formError && (
+                <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center justify-between gap-2">
+                  <span>{formError}</span>
+                  <button
+                    type="button"
+                    onClick={() => setFormError(null)}
+                    className="text-rose-500 hover:text-rose-700 font-bold text-xs"
+                  >
+                    ×
+                  </button>
+                </div>
+              )}
+
               {/* 五大支出性质大类切换 */}
               <div>
                 <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1.5">

@@ -68,6 +68,7 @@ export const D1_SCHEMA_STATEMENTS = [
     type TEXT NOT NULL,
     category TEXT NOT NULL,
     amount REAL NOT NULL,
+    direction TEXT DEFAULT 'out',
     payer TEXT,
     payment_method TEXT,
     beneficiary TEXT,
@@ -125,6 +126,8 @@ export const D1_SCHEMA_STATEMENTS = [
     unit_price REAL NOT NULL,
     total_cost REAL NOT NULL,
     is_full_tank INTEGER DEFAULT 1,
+    is_warning_light_on INTEGER DEFAULT 0,
+    is_missed_previous INTEGER DEFAULT 0,
     station TEXT,
     fuel_type TEXT,
     calculated_fuel_economy REAL,
@@ -214,6 +217,15 @@ export async function ensureD1Schema(db: any): Promise<boolean> {
   }
 
   if (isSchemaEnsured) return true;
+
+  // 增量字段平滑自愈迁移 (Safe Schema Column Auto-Migrations)
+  try {
+    await db.prepare('ALTER TABLE fuel_records ADD COLUMN is_warning_light_on INTEGER DEFAULT 0').run().catch(() => {});
+    await db.prepare('ALTER TABLE fuel_records ADD COLUMN is_missed_previous INTEGER DEFAULT 0').run().catch(() => {});
+    await db.prepare("ALTER TABLE expenses ADD COLUMN direction TEXT DEFAULT 'out'").run().catch(() => {});
+  } catch {
+    // 忽略表尚未创建时的 ALTER 失败
+  }
 
   try {
     // 快速探测是否已存在 sync_meta 和 expenses 表

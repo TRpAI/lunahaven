@@ -119,6 +119,8 @@ CREATE TABLE IF NOT EXISTS fuel_records (
     unit_price REAL NOT NULL,           -- 单价
     total_cost REAL NOT NULL,           -- 总金额
     is_full_tank INTEGER DEFAULT 1,     -- 1:加满, 0:未加满
+    is_warning_light_on INTEGER DEFAULT 0, -- 1:亮灯报警, 0:正常
+    is_missed_previous INTEGER DEFAULT 0,  -- 1:漏记, 0:正常
     station TEXT,
     fuel_type TEXT,
     calculated_fuel_economy REAL,       -- 百公里油耗
@@ -157,13 +159,14 @@ CREATE TABLE IF NOT EXISTS maintenance_records (
 CREATE TABLE IF NOT EXISTS expenses (
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,                 -- YYYY-MM-DD
-    type TEXT NOT NULL,                 -- living (日常生活) / education (教育支出)
-    category TEXT NOT NULL,             -- 餐饮美食/居家物业/课外培优/学费学杂等
+    type TEXT NOT NULL,                 -- living (日常生活) / medical / gift / education / travel
+    category TEXT NOT NULL,             -- 餐饮美食/居家物业/门诊就医/课外培优等
     amount REAL NOT NULL,               -- 支出金额
     payer TEXT,                         -- 出资人
     payment_method TEXT,                -- 支付渠道
     beneficiary TEXT,                   -- 受益对象
     remarks TEXT,                       -- 备注说明
+    direction TEXT DEFAULT 'out',       -- out / in (人情往来扩展)
     created_at TEXT NOT NULL,
     updated_at TEXT,
     deleted_at TEXT
@@ -176,7 +179,7 @@ CREATE TABLE IF NOT EXISTS app_settings (
     updated_at TEXT NOT NULL
 );
 
--- 8. 边缘同步元信息表 (sync_meta)
+-- 9. 边缘同步元信息表 (sync_meta)
 CREATE TABLE IF NOT EXISTS sync_meta (
     key TEXT PRIMARY KEY,               -- 'global'
     revision INTEGER DEFAULT 1,         -- 数据版本号
@@ -185,7 +188,7 @@ CREATE TABLE IF NOT EXISTS sync_meta (
     updated_at TEXT NOT NULL
 );
 
--- 9. 生产操作审计日志表 (audit_logs)
+-- 10. 生产操作审计日志表 (audit_logs)
 CREATE TABLE IF NOT EXISTS audit_logs (
     id TEXT PRIMARY KEY,
     action TEXT NOT NULL,
@@ -212,6 +215,9 @@ CREATE INDEX IF NOT EXISTS idx_fuel_updated ON fuel_records(updated_at);
 CREATE INDEX IF NOT EXISTS idx_maint_veh_date_del ON maintenance_records(vehicle_id, date, deleted_at);
 CREATE INDEX IF NOT EXISTS idx_maint_updated ON maintenance_records(updated_at);
 
+CREATE INDEX IF NOT EXISTS idx_expenses_date_del ON expenses(date, deleted_at);
+CREATE INDEX IF NOT EXISTS idx_expenses_type ON expenses(type);
+
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC);
 
 -- 默认全局元数据记录
@@ -220,7 +226,79 @@ VALUES ('global', 1, 2, NULL, datetime('now'));
 `;
 
 /**
- * 生产级健康检查接口探测
+ * 安全校验并格式化 Cloudflare Worker API 地址
+ */
+export function sanitizeWorkerUrl(rawUrl: string): string {
+  const trimmed = (rawUrl || '').trim();
+  if (!trimmed) {
+    throw new Error('Cloudflare Worker URL 不能为空');
+  }
+
+  // 严格协议安全性校验 (仅允许 http:// 或 https://)
+  if (!/^https?:\/\//i.test(trimmed)) {
+    throw new Error('URL 必须以 https:// 或 http:// 开头');
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    if (!parsed.hostname) {
+      throw new Error('URL 域名格式无效');
+    }
+    return trimmed.replace(/\/+$/, '');
+  } catch {
+    throw new Error('无效的 URL 地址格式');
+  }
+}
+
+/**
+ * 带超时保护与指数退避重试的 fetch 封装
+ */
+async function fetchWithTimeoutAndRetry(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 12000,
+  maxRetries = 2
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // 如果是 502 / 503 / 504 / 429 且仍有重试机会，则等待后重试
+      if ([502, 503, 504, 429].includes(response.status) && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+        continue;
+      }
+
+      return response;
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err?.name === 'AbortError') {
+        lastError = new Error(`网络请求超时 (${Math.round(timeoutMs / 1000)}秒)，请检查 Cloudflare Worker 服务连通性`);
+      } else {
+        lastError = new Error(err?.message || '网络连接失败');
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      }
+    }
+  }
+
+  throw lastError || new Error('网络请求重试失败');
+}
+
+/**
+ * 生产级健康检查接口探测 (带真实延迟与网络容错)
  */
 export async function checkCloudflareHealth(workerUrl: string): Promise<{
   ok: boolean;
@@ -228,41 +306,60 @@ export async function checkCloudflareHealth(workerUrl: string): Promise<{
   database: string;
   schemaVersion?: number;
   revision?: number;
+  latencyMs?: number;
   message?: string;
 }> {
-  const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
+  const startTime = performance.now();
+  let cleanUrl = '';
+  try {
+    cleanUrl = sanitizeWorkerUrl(workerUrl);
+  } catch (err: any) {
+    return {
+      ok: false,
+      status: 'INVALID_URL',
+      database: 'disconnected',
+      message: err.message,
+    };
+  }
+
   const targetUrl = `${cleanUrl}/api/health`;
 
   try {
-    const res = await fetch(targetUrl, {
+    const res = await fetchWithTimeoutAndRetry(targetUrl, {
       method: 'GET',
       headers: {
         'Accept': 'application/json',
       },
-    });
+    }, 8000, 1);
 
-    const json = await res.json();
-    if (res.ok && json.success) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    const json = await res.json().catch(() => null);
+
+    if (res.ok && json?.success) {
       return {
         ok: true,
         status: json.data?.status || 'healthy',
         database: json.data?.database || 'connected',
         schemaVersion: json.data?.schemaVersion,
         revision: json.data?.revision,
+        latencyMs,
       };
     } else {
       return {
         ok: false,
-        status: json.error?.code || 'ERROR',
+        status: json?.error?.code || 'ERROR',
         database: 'disconnected',
-        message: json.error?.message || `HTTP ${res.status}`,
+        latencyMs,
+        message: json?.error?.message || `HTTP ${res.status}`,
       };
     }
   } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - startTime);
     return {
       ok: false,
       status: 'UNREACHABLE',
       database: 'unknown',
+      latencyMs,
       message: err.message || '网络无法连接到 Worker 节点',
     };
   }
@@ -275,21 +372,21 @@ export async function initCloudflareD1Database(
   workerUrl: string,
   apiToken: string
 ): Promise<{ initialized: boolean; message: string }> {
-  const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
+  const cleanUrl = sanitizeWorkerUrl(workerUrl);
   const targetUrl = `${cleanUrl}/api/init`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Client-Version': '2.1.0',
+    'X-Client-Version': '2.2.0',
   };
   if (apiToken && apiToken.trim()) {
     headers['Authorization'] = `Bearer ${apiToken.trim()}`;
   }
 
-  const res = await fetch(targetUrl, {
+  const res = await fetchWithTimeoutAndRetry(targetUrl, {
     method: 'POST',
     headers,
-  });
+  }, 15000, 1);
 
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.success) {
@@ -297,7 +394,28 @@ export async function initCloudflareD1Database(
     throw new Error(errorMsg);
   }
 
-  return json.data;
+  return json.data || { initialized: true, message: '初始化成功' };
+}
+
+/**
+ * SQLite 字段参数安全转义 (防注入、控制字符清洗与类型安全)
+ */
+function escapeSqlValue(val: any): string {
+  if (val === null || val === undefined) return 'NULL';
+  if (typeof val === 'number') {
+    if (isNaN(val) || !isFinite(val)) return '0';
+    return String(val);
+  }
+  if (typeof val === 'boolean') {
+    return val ? '1' : '0';
+  }
+
+  // 清洗空字节 \0 及危险二进制控制字符，并将单引号转义为 ''
+  const str = String(val)
+    .replace(/\0/g, '')
+    .replace(/'/g, "''");
+
+  return `'${str}'`;
 }
 
 /**
@@ -318,74 +436,100 @@ export function generateCloudflareD1SqlDump(data: LedgerFullData): string {
     '',
   ];
 
-  const esc = (val: any) => {
-    if (val === null || val === undefined) return 'NULL';
-    if (typeof val === 'number') return val;
-    if (typeof val === 'boolean') return val ? 1 : 0;
-    return `'${String(val).replace(/'/g, "''")}'`;
-  };
+  const esc = escapeSqlValue;
 
-  // Salaries
+  // 1. Salaries
   for (const s of data.salaries) {
     lines.push(
-      `INSERT OR REPLACE INTO salaries VALUES (${esc(s.id)}, ${esc(s.month)}, ${esc(s.companyName)}, ${esc(s.baseSalary)}, ${esc(s.performancePay)}, ${esc(s.overtimePay)}, ${esc(s.allowance)}, ${esc(s.otherBonus)}, ${esc(s.preTaxDeduction)}, ${esc(s.grossSalary)}, ${esc(s.pensionPersonal)}, ${esc(s.medicalPersonal)}, ${esc(s.unemploymentPersonal)}, ${esc(s.housingFundPersonal)}, ${esc(s.totalPersonalInsurance)}, ${esc(s.pensionCompany)}, ${esc(s.medicalCompany)}, ${esc(s.unemploymentCompany)}, ${esc(s.injuryCompany)}, ${esc(s.maternityCompany)}, ${esc(s.housingFundCompany)}, ${esc(s.totalCompanyInsurance)}, ${esc(s.specialDeductions)}, ${esc(s.taxThreshold)}, ${esc(s.taxableIncome)}, ${esc(s.individualIncomeTax)}, ${esc(s.netSalary)}, ${esc(s.companyTotalCost)}, ${esc(s.payDate)}, ${esc(s.notes)}, ${esc(s.createdAt)}, ${esc(s.updatedAt || s.createdAt)}, ${esc(s.deletedAt || null)});`
+      `INSERT OR REPLACE INTO salaries (
+        id, month, company_name, base_salary, performance_pay, overtime_pay, allowance, other_bonus,
+        pre_tax_deduction, gross_salary, pension_personal, medical_personal, unemployment_personal,
+        housing_fund_personal, total_personal_insurance, pension_company, medical_company, unemployment_company,
+        injury_company, maternity_company, housing_fund_company, total_company_insurance, special_deductions,
+        tax_threshold, taxable_income, individual_income_tax, net_salary, company_total_cost, pay_date, notes,
+        created_at, updated_at, deleted_at
+      ) VALUES (${esc(s.id)}, ${esc(s.month)}, ${esc(s.companyName)}, ${esc(s.baseSalary)}, ${esc(s.performancePay)}, ${esc(s.overtimePay)}, ${esc(s.allowance)}, ${esc(s.otherBonus)}, ${esc(s.preTaxDeduction)}, ${esc(s.grossSalary)}, ${esc(s.pensionPersonal)}, ${esc(s.medicalPersonal)}, ${esc(s.unemploymentPersonal)}, ${esc(s.housingFundPersonal)}, ${esc(s.totalPersonalInsurance)}, ${esc(s.pensionCompany)}, ${esc(s.medicalCompany)}, ${esc(s.unemploymentCompany)}, ${esc(s.injuryCompany)}, ${esc(s.maternityCompany)}, ${esc(s.housingFundCompany)}, ${esc(s.totalCompanyInsurance)}, ${esc(s.specialDeductions)}, ${esc(s.taxThreshold)}, ${esc(s.taxableIncome)}, ${esc(s.individualIncomeTax)}, ${esc(s.netSalary)}, ${esc(s.companyTotalCost)}, ${esc(s.payDate)}, ${esc(s.notes)}, ${esc(s.createdAt)}, ${esc(s.updatedAt || s.createdAt)}, ${esc(s.deletedAt || null)});`
     );
   }
 
-  // Overtimes
+  // 2. Overtimes
   for (const o of data.overtimes) {
     lines.push(
-      `INSERT OR REPLACE INTO overtimes VALUES (${esc(o.id)}, ${esc(o.date)}, ${esc(o.type)}, ${esc(o.startTime)}, ${esc(o.endTime)}, ${esc(o.durationHours)}, ${esc(o.multiplier)}, ${esc(o.settlementType)}, ${esc(o.hourlyRate)}, ${esc(o.estimatedPay)}, ${esc(o.compTimeHoursUsed || 0)}, ${esc(o.reason)}, ${esc(o.approver || '')}, ${esc(o.notes || '')}, ${esc(o.createdAt)}, ${esc(o.updatedAt || o.createdAt)}, ${esc(o.deletedAt || null)});`
+      `INSERT OR REPLACE INTO overtimes (
+        id, date, type, start_time, end_time, duration_hours, multiplier, settlement_type,
+        hourly_rate, estimated_pay, comp_time_hours_used, reason, approver, notes,
+        created_at, updated_at, deleted_at
+      ) VALUES (${esc(o.id)}, ${esc(o.date)}, ${esc(o.type)}, ${esc(o.startTime)}, ${esc(o.endTime)}, ${esc(o.durationHours)}, ${esc(o.multiplier)}, ${esc(o.settlementType)}, ${esc(o.hourlyRate)}, ${esc(o.estimatedPay)}, ${esc(o.compTimeHoursUsed || 0)}, ${esc(o.reason)}, ${esc(o.approver || '')}, ${esc(o.notes || '')}, ${esc(o.createdAt)}, ${esc(o.updatedAt || o.createdAt)}, ${esc(o.deletedAt || null)});`
     );
   }
 
-  // Gifts
+  // 3. Gifts
   for (const g of data.gifts) {
     lines.push(
-      `INSERT OR REPLACE INTO social_gifts VALUES (${esc(g.id)}, ${esc(g.date)}, ${esc(g.direction)}, ${esc(g.personName)}, ${esc(g.relation)}, ${esc(g.eventType)}, ${esc(g.amount)}, ${esc(g.returnStatus)}, ${esc(g.returnAmount || 0)}, ${esc(g.location || '')}, ${esc(g.notes || '')}, ${esc(g.createdAt)}, ${esc(g.updatedAt || g.createdAt)}, ${esc(g.deletedAt || null)});`
+      `INSERT OR REPLACE INTO social_gifts (
+        id, date, direction, person_name, relation, event_type, amount,
+        return_status, return_amount, location, notes, created_at, updated_at, deleted_at
+      ) VALUES (${esc(g.id)}, ${esc(g.date)}, ${esc(g.direction)}, ${esc(g.personName)}, ${esc(g.relation)}, ${esc(g.eventType)}, ${esc(g.amount)}, ${esc(g.returnStatus)}, ${esc(g.returnAmount || 0)}, ${esc(g.location || '')}, ${esc(g.notes || '')}, ${esc(g.createdAt)}, ${esc(g.updatedAt || g.createdAt)}, ${esc(g.deletedAt || null)});`
     );
   }
 
-  // Vehicles
+  // 4. Vehicles
   for (const v of data.vehicles) {
     lines.push(
-      `INSERT OR REPLACE INTO vehicles VALUES (${esc(v.id)}, ${esc(v.name)}, ${esc(v.plateNumber || '')}, ${esc(v.fuelType)}, ${esc(v.tankCapacity || 50)}, ${esc(v.initialOdometer || 0)}, ${esc(v.currentOdometer || 0)}, ${esc(v.maintenanceIntervalKm || 10000)}, ${esc(v.maintenanceIntervalDays || 180)}, ${esc(v.lastMaintenanceDate || '')}, ${esc(v.lastMaintenanceOdometer || 0)}, ${esc(v.insuranceExpiryDate || '')}, ${esc(v.annualInspectionDate || '')}, ${esc(v.createdAt)}, ${esc(v.updatedAt || v.createdAt)}, ${esc(v.deletedAt || null)});`
+      `INSERT OR REPLACE INTO vehicles (
+        id, name, plate_number, fuel_type, tank_capacity, initial_odometer, current_odometer,
+        maintenance_interval_km, maintenance_interval_days, last_maintenance_date,
+        last_maintenance_odometer, insurance_expiry_date, annual_inspection_date,
+        created_at, updated_at, deleted_at
+      ) VALUES (${esc(v.id)}, ${esc(v.name)}, ${esc(v.plateNumber || '')}, ${esc(v.fuelType)}, ${esc(v.tankCapacity || 50)}, ${esc(v.initialOdometer || 0)}, ${esc(v.currentOdometer || 0)}, ${esc(v.maintenanceIntervalKm || 10000)}, ${esc(v.maintenanceIntervalDays || 180)}, ${esc(v.lastMaintenanceDate || '')}, ${esc(v.lastMaintenanceOdometer || 0)}, ${esc(v.insuranceExpiryDate || '')}, ${esc(v.annualInspectionDate || '')}, ${esc(v.createdAt)}, ${esc(v.updatedAt || v.createdAt)}, ${esc(v.deletedAt || null)});`
     );
   }
 
-  // Fuels
+  // 5. Fuels
   for (const f of data.fuels) {
     lines.push(
-      `INSERT OR REPLACE INTO fuel_records VALUES (${esc(f.id)}, ${esc(f.vehicleId)}, ${esc(f.date)}, ${esc(f.odometer)}, ${esc(f.fuelAmount)}, ${esc(f.unitPrice)}, ${esc(f.totalCost)}, ${f.isFullTank ? 1 : 0}, ${esc(f.station || '')}, ${esc(f.fuelType || '')}, ${esc(f.calculatedFuelEconomy)}, ${esc(f.costPerKm)}, ${esc(f.tripDistance)}, ${esc(f.notes || '')}, ${esc(f.createdAt)}, ${esc(f.updatedAt || f.createdAt)}, ${esc(f.deletedAt || null)});`
+      `INSERT OR REPLACE INTO fuel_records (
+        id, vehicle_id, date, odometer, fuel_amount, unit_price, total_cost,
+        is_full_tank, is_warning_light_on, is_missed_previous, station, fuel_type,
+        calculated_fuel_economy, cost_per_km, trip_distance, notes,
+        created_at, updated_at, deleted_at
+      ) VALUES (${esc(f.id)}, ${esc(f.vehicleId)}, ${esc(f.date)}, ${esc(f.odometer)}, ${esc(f.fuelAmount)}, ${esc(f.unitPrice)}, ${esc(f.totalCost)}, ${f.isFullTank ? 1 : 0}, ${f.isWarningLightOn ? 1 : 0}, ${f.isMissedPrevious ? 1 : 0}, ${esc(f.station || '')}, ${esc(f.fuelType || '')}, ${esc(f.calculatedFuelEconomy)}, ${esc(f.costPerKm)}, ${esc(f.tripDistance)}, ${esc(f.notes || '')}, ${esc(f.createdAt)}, ${esc(f.updatedAt || f.createdAt)}, ${esc(f.deletedAt || null)});`
     );
   }
 
-  // Maintenances
+  // 6. Maintenances
   for (const m of data.maintenances) {
     lines.push(
-      `INSERT OR REPLACE INTO maintenance_records VALUES (${esc(m.id)}, ${esc(m.vehicleId)}, ${esc(m.date)}, ${esc(m.odometer)}, ${esc(m.category)}, ${esc(m.title)}, ${esc(JSON.stringify(m.items || []))}, ${esc(m.shopName || '')}, ${esc(m.partsCost || 0)}, ${esc(m.laborCost || 0)}, ${esc(m.totalCost || 0)}, ${esc(m.nextServiceOdometer)}, ${esc(m.nextServiceDate)}, ${esc(m.notes || '')}, ${esc(m.createdAt)}, ${esc(m.updatedAt || m.createdAt)}, ${esc(m.deletedAt || null)});`
+      `INSERT OR REPLACE INTO maintenance_records (
+        id, vehicle_id, date, odometer, category, title, items_json, shop_name,
+        parts_cost, labor_cost, total_cost, next_service_odometer, next_service_date,
+        notes, created_at, updated_at, deleted_at
+      ) VALUES (${esc(m.id)}, ${esc(m.vehicleId)}, ${esc(m.date)}, ${esc(m.odometer)}, ${esc(m.category)}, ${esc(m.title)}, ${esc(JSON.stringify(m.items || []))}, ${esc(m.shopName || '')}, ${esc(m.partsCost || 0)}, ${esc(m.laborCost || 0)}, ${esc(m.totalCost || 0)}, ${esc(m.nextServiceOdometer)}, ${esc(m.nextServiceDate)}, ${esc(m.notes || '')}, ${esc(m.createdAt)}, ${esc(m.updatedAt || m.createdAt)}, ${esc(m.deletedAt || null)});`
     );
   }
 
-  // Expenses (日常生活与教育支出)
+  // 7. Expenses (日常生活与教育支出)
   for (const exp of data.expenses || []) {
     lines.push(
-      `INSERT OR REPLACE INTO expenses VALUES (${esc(exp.id)}, ${esc(exp.date)}, ${esc(exp.type)}, ${esc(exp.category)}, ${esc(exp.amount)}, ${esc(exp.payer || '')}, ${esc(exp.paymentMethod || '')}, ${esc(exp.beneficiary || '')}, ${esc(exp.remarks || '')}, ${esc(exp.createdAt)}, ${esc(exp.updatedAt || exp.createdAt)}, ${esc(exp.deletedAt || null)});`
+      `INSERT OR REPLACE INTO expenses (
+        id, date, type, category, amount, payer, payment_method, beneficiary, remarks,
+        direction, created_at, updated_at, deleted_at
+      ) VALUES (${esc(exp.id)}, ${esc(exp.date)}, ${esc(exp.type)}, ${esc(exp.category)}, ${esc(exp.amount)}, ${esc(exp.payer || '')}, ${esc(exp.paymentMethod || '')}, ${esc(exp.beneficiary || '')}, ${esc(exp.remarks || '')}, ${esc(exp.direction || 'out')}, ${esc(exp.createdAt)}, ${esc(exp.updatedAt || exp.createdAt)}, ${esc(exp.deletedAt || null)});`
     );
   }
 
-  // App Settings
+  // 8. App Settings
   if (data.settings) {
     lines.push(
-      `INSERT OR REPLACE INTO app_settings VALUES ('app_settings', ${esc(JSON.stringify(data.settings))}, ${esc(new Date().toISOString())});`
+      `INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES ('app_settings', ${esc(JSON.stringify(data.settings))}, ${esc(new Date().toISOString())});`
     );
   }
 
-  // Sync Meta
+  // 9. Sync Meta
   const revision = data.syncMeta?.revision || 1;
   const schemaVersion = data.syncMeta?.schemaVersion || 2;
   lines.push(
-    `INSERT OR REPLACE INTO sync_meta VALUES ('global', ${revision}, ${schemaVersion}, ${esc(data.syncMeta?.lastSyncedAt || null)}, ${esc(new Date().toISOString())});`
+    `INSERT OR REPLACE INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at) VALUES ('global', ${revision}, ${schemaVersion}, ${esc(data.syncMeta?.lastSyncedAt || null)}, ${esc(new Date().toISOString())});`
   );
 
   lines.push('', 'COMMIT;', '-- D1 SQL Dump Finished.');
@@ -393,37 +537,43 @@ export function generateCloudflareD1SqlDump(data: LedgerFullData): string {
 }
 
 /**
- * 向 Cloudflare Worker 生产端点推送同步数据
+ * 向 Cloudflare Worker 生产端点推送同步数据 (带超时保护与重试机制)
  */
-export async function syncToCloudflareWorker(workerUrl: string, apiToken: string, data: LedgerFullData) {
-  const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
+export async function syncToCloudflareWorker(
+  workerUrl: string,
+  apiToken: string,
+  data: LedgerFullData
+): Promise<{ success: boolean; data?: any }> {
+  const cleanUrl = sanitizeWorkerUrl(workerUrl);
   const targetUrl = `${cleanUrl}/api/sync`;
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Client-Version': '2.1.0',
+    'X-Client-Version': '2.2.0',
   };
 
   if (apiToken && apiToken.trim()) {
     headers['Authorization'] = `Bearer ${apiToken.trim()}`;
   }
 
-  const res = await fetch(targetUrl, {
+  const payload = {
+    version: 2,
+    salaries: data.salaries || [],
+    overtimes: data.overtimes || [],
+    gifts: data.gifts || [],
+    vehicles: data.vehicles || [],
+    fuels: data.fuels || [],
+    maintenances: data.maintenances || [],
+    expenses: data.expenses || [],
+    settings: data.settings,
+    syncMeta: data.syncMeta,
+  };
+
+  const res = await fetchWithTimeoutAndRetry(targetUrl, {
     method: 'POST',
     headers,
-    body: JSON.stringify({
-      version: 2,
-      salaries: data.salaries,
-      overtimes: data.overtimes,
-      gifts: data.gifts,
-      vehicles: data.vehicles,
-      fuels: data.fuels,
-      maintenances: data.maintenances,
-      expenses: data.expenses || [],
-      settings: data.settings,
-      syncMeta: data.syncMeta,
-    }),
-  });
+    body: JSON.stringify(payload),
+  }, 15000, 1);
 
   const json = await res.json().catch(() => null);
 
@@ -444,21 +594,21 @@ export async function pullFromCloudflareWorker(
   apiToken: string,
   since?: string
 ): Promise<{ data: Partial<LedgerFullData>; isIncremental: boolean }> {
-  const cleanUrl = workerUrl.trim().replace(/\/+$/, '');
+  const cleanUrl = sanitizeWorkerUrl(workerUrl);
   const queryParam = since ? `?since=${encodeURIComponent(since)}` : '';
   const targetUrl = `${cleanUrl}/api/sync${queryParam}`;
 
   const headers: Record<string, string> = {
-    'X-Client-Version': '2.1.0',
+    'X-Client-Version': '2.2.0',
   };
   if (apiToken && apiToken.trim()) {
     headers['Authorization'] = `Bearer ${apiToken.trim()}`;
   }
 
-  const res = await fetch(targetUrl, {
+  const res = await fetchWithTimeoutAndRetry(targetUrl, {
     method: 'GET',
     headers,
-  });
+  }, 15000, 1);
 
   const json = await res.json().catch(() => null);
 
@@ -475,117 +625,119 @@ export async function pullFromCloudflareWorker(
       salaries: (d.salaries || []).map((s: any) => ({
         id: s.id,
         month: s.month,
-        companyName: s.company_name,
-        baseSalary: s.base_salary,
-        performancePay: s.performance_pay,
-        overtimePay: s.overtime_pay,
-        allowance: s.allowance,
-        otherBonus: s.other_bonus,
-        preTaxDeduction: s.pre_tax_deduction,
-        grossSalary: s.gross_salary,
-        pensionPersonal: s.pension_personal,
-        medicalPersonal: s.medical_personal,
-        unemploymentPersonal: s.unemployment_personal,
-        housingFundPersonal: s.housing_fund_personal,
-        totalPersonalInsurance: s.total_personal_insurance,
-        pensionCompany: s.pension_company,
-        medicalCompany: s.medical_company,
-        unemploymentCompany: s.unemployment_company,
-        injuryCompany: s.injury_company,
-        maternityCompany: s.maternity_company,
-        housingFundCompany: s.housing_fund_company,
-        totalCompanyInsurance: s.total_company_insurance,
-        specialDeductions: s.special_deductions,
-        taxThreshold: s.tax_threshold,
-        taxableIncome: s.taxable_income,
-        individualIncomeTax: s.individual_income_tax,
-        netSalary: s.net_salary,
-        companyTotalCost: s.company_total_cost,
-        payDate: s.pay_date,
-        notes: s.notes,
-        createdAt: s.created_at,
-        updatedAt: s.updated_at,
-        deletedAt: s.deleted_at || undefined,
+        companyName: s.company_name || s.companyName || '',
+        baseSalary: Number(s.base_salary ?? s.baseSalary ?? 0),
+        performancePay: Number(s.performance_pay ?? s.performancePay ?? 0),
+        overtimePay: Number(s.overtime_pay ?? s.overtimePay ?? 0),
+        allowance: Number(s.allowance ?? 0),
+        otherBonus: Number(s.other_bonus ?? s.otherBonus ?? 0),
+        preTaxDeduction: Number(s.pre_tax_deduction ?? s.preTaxDeduction ?? 0),
+        grossSalary: Number(s.gross_salary ?? s.grossSalary ?? 0),
+        pensionPersonal: Number(s.pension_personal ?? s.pensionPersonal ?? 0),
+        medicalPersonal: Number(s.medical_personal ?? s.medicalPersonal ?? 0),
+        unemploymentPersonal: Number(s.unemployment_personal ?? s.unemploymentPersonal ?? 0),
+        housingFundPersonal: Number(s.housing_fund_personal ?? s.housingFundPersonal ?? 0),
+        totalPersonalInsurance: Number(s.total_personal_insurance ?? s.totalPersonalInsurance ?? 0),
+        pensionCompany: Number(s.pension_company ?? s.pensionCompany ?? 0),
+        medicalCompany: Number(s.medical_company ?? s.medicalCompany ?? 0),
+        unemploymentCompany: Number(s.unemployment_company ?? s.unemploymentCompany ?? 0),
+        injuryCompany: Number(s.injury_company ?? s.injuryCompany ?? 0),
+        maternityCompany: Number(s.maternity_company ?? s.maternityCompany ?? 0),
+        housingFundCompany: Number(s.housing_fund_company ?? s.housingFundCompany ?? 0),
+        totalCompanyInsurance: Number(s.total_company_insurance ?? s.totalCompanyInsurance ?? 0),
+        specialDeductions: Number(s.special_deductions ?? s.specialDeductions ?? 0),
+        taxThreshold: Number(s.tax_threshold ?? s.taxThreshold ?? 5000),
+        taxableIncome: Number(s.taxable_income ?? s.taxableIncome ?? 0),
+        individualIncomeTax: Number(s.individual_income_tax ?? s.individualIncomeTax ?? 0),
+        netSalary: Number(s.net_salary ?? s.netSalary ?? 0),
+        companyTotalCost: Number(s.company_total_cost ?? s.companyTotalCost ?? 0),
+        payDate: s.pay_date || s.payDate,
+        notes: s.notes || '',
+        createdAt: s.created_at || s.createdAt || new Date().toISOString(),
+        updatedAt: s.updated_at || s.updatedAt || s.created_at || new Date().toISOString(),
+        deletedAt: s.deleted_at || s.deletedAt || undefined,
       })),
       overtimes: (d.overtimes || []).map((o: any) => ({
         id: o.id,
         date: o.date,
-        type: o.type,
-        startTime: o.start_time,
-        endTime: o.end_time,
-        durationHours: o.duration_hours,
-        multiplier: o.multiplier,
-        settlementType: o.settlement_type,
-        hourlyRate: o.hourly_rate,
-        estimatedPay: o.estimated_pay,
-        compTimeHoursUsed: o.comp_time_hours_used,
-        reason: o.reason,
-        approver: o.approver,
-        notes: o.notes,
-        createdAt: o.created_at,
-        updatedAt: o.updated_at || o.created_at,
-        deletedAt: o.deleted_at || undefined,
+        type: o.type || 'workday',
+        startTime: o.start_time || o.startTime || '',
+        endTime: o.end_time || o.endTime || '',
+        durationHours: Number(o.duration_hours ?? o.durationHours ?? 0),
+        multiplier: Number(o.multiplier ?? 1.5),
+        settlementType: o.settlement_type || o.settlementType || 'paid',
+        hourlyRate: Number(o.hourly_rate ?? o.hourlyRate ?? 0),
+        estimatedPay: Number(o.estimated_pay ?? o.estimatedPay ?? 0),
+        compTimeHoursUsed: Number(o.comp_time_hours_used ?? o.compTimeHoursUsed ?? 0),
+        reason: o.reason || '',
+        approver: o.approver || '',
+        notes: o.notes || '',
+        createdAt: o.created_at || o.createdAt || new Date().toISOString(),
+        updatedAt: o.updated_at || o.updatedAt || o.created_at || new Date().toISOString(),
+        deletedAt: o.deleted_at || o.deletedAt || undefined,
       })),
       gifts: (d.gifts || []).map((g: any) => ({
         id: g.id,
         date: g.date,
-        direction: g.direction,
-        personName: g.person_name,
-        relation: g.relation,
-        eventType: g.event_type,
-        amount: g.amount,
-        returnStatus: g.return_status,
-        returnAmount: g.return_amount,
-        location: g.location,
-        notes: g.notes,
-        createdAt: g.created_at,
-        updatedAt: g.updated_at || g.created_at,
-        deletedAt: g.deleted_at || undefined,
+        direction: g.direction || 'out',
+        personName: g.person_name || g.personName || '',
+        relation: g.relation || 'friend',
+        eventType: g.event_type || g.eventType || 'wedding',
+        amount: Number(g.amount ?? 0),
+        returnStatus: g.return_status || g.returnStatus || 'pending',
+        returnAmount: Number(g.return_amount ?? g.returnAmount ?? 0),
+        location: g.location || '',
+        notes: g.notes || '',
+        createdAt: g.created_at || g.createdAt || new Date().toISOString(),
+        updatedAt: g.updated_at || g.updatedAt || g.created_at || new Date().toISOString(),
+        deletedAt: g.deleted_at || g.deletedAt || undefined,
       })),
       vehicles: (d.vehicles || []).map((v: any) => ({
         id: v.id,
         name: v.name,
-        plateNumber: v.plate_number,
-        fuelType: v.fuel_type,
-        tankCapacity: v.tank_capacity,
-        initialOdometer: v.initial_odometer,
-        currentOdometer: v.current_odometer,
-        maintenanceIntervalKm: v.maintenance_interval_km,
-        maintenanceIntervalDays: v.maintenance_interval_days,
-        lastMaintenanceDate: v.last_maintenance_date,
-        lastMaintenanceOdometer: v.last_maintenance_odometer,
-        insuranceExpiryDate: v.insurance_expiry_date,
-        annualInspectionDate: v.annual_inspection_date,
-        createdAt: v.created_at,
-        updatedAt: v.updated_at || v.created_at,
-        deletedAt: v.deleted_at || undefined,
+        plateNumber: v.plate_number || v.plateNumber || '',
+        fuelType: v.fuel_type || v.fuelType || 'gasoline_92',
+        tankCapacity: Number(v.tank_capacity ?? v.tankCapacity ?? 50),
+        initialOdometer: Number(v.initial_odometer ?? v.initialOdometer ?? 0),
+        currentOdometer: Number(v.current_odometer ?? v.currentOdometer ?? 0),
+        maintenanceIntervalKm: Number(v.maintenance_interval_km ?? v.maintenanceIntervalKm ?? 10000),
+        maintenanceIntervalDays: Number(v.maintenance_interval_days ?? v.maintenanceIntervalDays ?? 180),
+        lastMaintenanceDate: v.last_maintenance_date || v.lastMaintenanceDate || '',
+        lastMaintenanceOdometer: v.last_maintenance_odometer ?? v.lastMaintenanceOdometer,
+        insuranceExpiryDate: v.insurance_expiry_date || v.insuranceExpiryDate || '',
+        annualInspectionDate: v.annual_inspection_date || v.annualInspectionDate || '',
+        createdAt: v.created_at || v.createdAt || new Date().toISOString(),
+        updatedAt: v.updated_at || v.updatedAt || v.created_at || new Date().toISOString(),
+        deletedAt: v.deleted_at || v.deletedAt || undefined,
       })),
       fuels: (d.fuels || []).map((f: any) => ({
         id: f.id,
-        vehicleId: f.vehicle_id,
+        vehicleId: f.vehicle_id || f.vehicleId,
         date: f.date,
-        odometer: f.odometer,
-        fuelAmount: f.fuel_amount,
-        unitPrice: f.unit_price,
-        totalCost: f.total_cost,
-        isFullTank: f.is_full_tank === 1,
-        station: f.station,
-        fuelType: f.fuel_type,
-        calculatedFuelEconomy: f.calculated_fuel_economy,
-        costPerKm: f.cost_per_km,
-        tripDistance: f.trip_distance,
-        notes: f.notes,
-        createdAt: f.created_at,
-        updatedAt: f.updated_at || f.created_at,
-        deletedAt: f.deleted_at || undefined,
+        odometer: Number(f.odometer ?? 0),
+        fuelAmount: Number(f.fuel_amount ?? f.fuelAmount ?? 0),
+        unitPrice: Number(f.unit_price ?? f.unitPrice ?? 0),
+        totalCost: Number(f.total_cost ?? f.totalCost ?? 0),
+        isFullTank: f.is_full_tank === 1 || f.isFullTank === true,
+        isWarningLightOn: f.is_warning_light_on === 1 || f.isWarningLightOn === true,
+        isMissedPrevious: f.is_missed_previous === 1 || f.isMissedPrevious === true,
+        station: f.station || '',
+        fuelType: f.fuel_type || f.fuelType || '',
+        calculatedFuelEconomy: f.calculated_fuel_economy ?? f.calculatedFuelEconomy,
+        costPerKm: f.cost_per_km ?? f.costPerKm,
+        tripDistance: f.trip_distance ?? f.tripDistance,
+        notes: f.notes || '',
+        createdAt: f.created_at || f.createdAt || new Date().toISOString(),
+        updatedAt: f.updated_at || f.updatedAt || f.created_at || new Date().toISOString(),
+        deletedAt: f.deleted_at || f.deletedAt || undefined,
       })),
       maintenances: (d.maintenances || []).map((m: any) => ({
         id: m.id,
-        vehicleId: m.vehicle_id,
+        vehicleId: m.vehicle_id || m.vehicleId,
         date: m.date,
-        odometer: m.odometer,
-        category: m.category,
-        title: m.title,
+        odometer: Number(m.odometer ?? 0),
+        category: m.category || 'routine',
+        title: m.title || '',
         items: (() => {
           if (Array.isArray(m.items)) return m.items;
           if (typeof m.items_json === 'string') {
@@ -597,31 +749,33 @@ export async function pullFromCloudflareWorker(
           }
           return [];
         })(),
-        shopName: m.shop_name,
-        partsCost: m.parts_cost,
-        laborCost: m.labor_cost,
-        totalCost: m.total_cost,
-        nextServiceOdometer: m.next_service_odometer,
-        nextServiceDate: m.next_service_date,
-        notes: m.notes,
-        createdAt: m.created_at,
-        updatedAt: m.updated_at || m.created_at,
-        deletedAt: m.deleted_at || undefined,
+        shopName: m.shop_name || m.shopName || '',
+        partsCost: Number(m.parts_cost ?? m.partsCost ?? 0),
+        laborCost: Number(m.labor_cost ?? m.laborCost ?? 0),
+        totalCost: Number(m.total_cost ?? m.totalCost ?? 0),
+        nextServiceOdometer: m.next_service_odometer ?? m.nextServiceOdometer,
+        nextServiceDate: m.next_service_date || m.nextServiceDate,
+        notes: m.notes || '',
+        createdAt: m.created_at || m.createdAt || new Date().toISOString(),
+        updatedAt: m.updated_at || m.updatedAt || m.created_at || new Date().toISOString(),
+        deletedAt: m.deleted_at || m.deletedAt || undefined,
       })),
       expenses: (d.expenses || []).map((exp: any) => ({
         id: exp.id,
         date: exp.date,
-        type: exp.type,
-        category: exp.category,
-        amount: exp.amount,
-        payer: exp.payer,
-        paymentMethod: exp.payment_method,
-        beneficiary: exp.beneficiary,
-        remarks: exp.remarks,
-        createdAt: exp.created_at,
-        updatedAt: exp.updated_at || exp.created_at,
-        deletedAt: exp.deleted_at || undefined,
+        type: exp.type || 'living',
+        category: exp.category || '日常开销',
+        amount: Number(exp.amount ?? 0),
+        payer: exp.payer || '本人',
+        paymentMethod: exp.payment_method || exp.paymentMethod || '微信支付',
+        beneficiary: exp.beneficiary || '',
+        remarks: exp.remarks || '',
+        direction: exp.direction || 'out',
+        createdAt: exp.created_at || exp.createdAt || new Date().toISOString(),
+        updatedAt: exp.updated_at || exp.updatedAt || exp.created_at || new Date().toISOString(),
+        deletedAt: exp.deleted_at || exp.deletedAt || undefined,
       })),
+      settings: d.settings,
       syncMeta: d.syncMeta,
     },
   };

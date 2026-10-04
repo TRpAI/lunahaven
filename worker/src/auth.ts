@@ -8,8 +8,19 @@ export interface AuthResult {
 }
 
 /**
- * 生产环境 CORS 配置优化
- * 默认允许所有合法客户端通过 Bearer Token 访问；若指定了 ALLOWED_ORIGIN 白名单则优先匹配白名单
+ * 常量时间字符串比对，防止针对 Token 的侧信道时序攻击 (Side-Channel Timing Attacks)
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * 生产环境 CORS 与严格安全响应头配置
  */
 export function getCorsHeaders(request: Request, env: Env): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
@@ -22,7 +33,6 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
     if (origin && list.includes(origin.toLowerCase())) {
       allowOrigin = origin;
     } else if (origin) {
-      // 允许常见开发与本地预览
       try {
         const u = new URL(origin);
         if (
@@ -50,29 +60,33 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Client-Version',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
+    // 关键安全响应标头
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
 }
 
 /**
- * 生产环境强制 Token 鉴权
- * 规则：
- * 1. 若 Worker 内部未设置 API_TOKEN 密钥，直接拒绝访问 (503 Service Unavailable)
- * 2. 若请求头中未附带或 Token 不匹配，拒绝访问 (401 Unauthorized)
+ * 生产环境强制 Token 鉴权 (兼容 API_TOKEN 与 AUTH_TOKEN，具备时序攻击防御)
  */
 export function verifyAuthorization(request: Request, env: Env): AuthResult {
-  if (!env.API_TOKEN || !env.API_TOKEN.trim()) {
+  const configuredToken = (env.API_TOKEN || env.AUTH_TOKEN || '').trim();
+
+  if (!configuredToken) {
     return {
       authorized: false,
       status: 503,
       errorCode: 'AUTH_SECRET_MISSING',
-      errorMessage: '服务端未配置安全访问凭据 (API_TOKEN)，请通过 wrangler secret put API_TOKEN 配置',
+      errorMessage: '服务端未配置安全访问凭据 (API_TOKEN / AUTH_TOKEN)，请通过 wrangler secret put API_TOKEN 配置',
     };
   }
 
   const authHeader = request.headers.get('Authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-  if (!token || token !== env.API_TOKEN.trim()) {
+  if (!token || !timingSafeEqual(token, configuredToken)) {
     return {
       authorized: false,
       status: 401,

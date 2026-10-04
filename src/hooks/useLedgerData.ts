@@ -61,6 +61,14 @@ export function useLedgerData() {
     };
   }, []);
 
+  // 保持本地 LocalStorage 快照与最新状态始终同步（防抖 500ms），保障首次加载无闪烁与 IndexedDB 故障时的高可用降级
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      saveLedgerData(data);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [data]);
+
   // 用户操作触发后的自动推送调度（防抖合并 + 可配置延迟时间）
   const scheduleAutoPushSync = useCallback(() => {
     const current = latestDataRef.current;

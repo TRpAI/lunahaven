@@ -27,6 +27,7 @@ import {
   Sparkles,
   Terminal,
   Wrench,
+  X,
 } from 'lucide-react';
 import { AppSettings, LedgerFullData } from '../../types';
 import {
@@ -83,6 +84,15 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   const [copiedWrangler, setCopiedWrangler] = useState(false);
   const [showSqlPreview, setShowSqlPreview] = useState(false);
   const [isGuideOpen, setIsGuideOpen] = useState(false);
+  const [toastMsg, setToastMsg] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [isPullConfirmOpen, setIsPullConfirmOpen] = useState(false);
+
+  const showToast = (type: 'success' | 'error' | 'info', text: string) => {
+    setToastMsg({ type, text });
+    setTimeout(() => {
+      setToastMsg((prev) => (prev?.text === text ? null : prev));
+    }, 4000);
+  };
 
   // 统计各类数据明细条数
   const salariesCount = (fullData.salaries || []).length;
@@ -112,7 +122,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         autoSyncDelaySeconds: autoSyncDelayInput,
       },
     });
-    alert('Cloudflare D1 同步配置已成功保存！');
+    showToast('success', 'Cloudflare D1 同步配置已成功保存！');
   };
 
   const handleExportSqlFile = () => {
@@ -122,13 +132,14 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
       `qiyue_ledger_d1_backup_${new Date().toISOString().slice(0, 10)}.sql`,
       'application/sql;charset=utf-8'
     );
+    showToast('info', '标准 D1 SQL 数据备份文件已生成并启动下载');
   };
 
   const handleRunHealthCheck = async () => {
     const url = (workerUrlInput || d1Config.workerUrl || '').trim();
 
     if (!url) {
-      alert('请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
+      showToast('error', '请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
       return;
     }
 
@@ -146,12 +157,14 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
           revision: res.revision ?? 1,
           latencyMs: elapsed,
         });
+        showToast('success', `连通测试通过 · 响应延迟 ${elapsed}ms`);
       } else {
         setHealthStatusResult({
           ok: false,
           text: `健康检查异常: ${res.message || '数据库未连接或表未初始化'}`,
           latencyMs: elapsed,
         });
+        showToast('error', `健康检查异常: ${res.message || '数据库未就绪'}`);
       }
     } catch (err: any) {
       const elapsed = Math.round(performance.now() - start);
@@ -160,6 +173,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         text: `无法连接节点: ${err.message}`,
         latencyMs: elapsed,
       });
+      showToast('error', `无法连接节点: ${err.message}`);
     } finally {
       setHealthLoading(false);
     }
@@ -170,17 +184,17 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     const token = (apiTokenInput || d1Config.apiToken || '').trim();
 
     if (!url) {
-      alert('请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
+      showToast('error', '请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
       return;
     }
 
     setInitLoading(true);
     try {
       const res = await initCloudflareD1Database(url, token);
-      alert(`🎉 ${res.message || 'D1 数据库表结构已全部初始化就绪！'}\n现在您可以正常执行拉取与双向同步。`);
+      showToast('success', `🎉 ${res.message || 'D1 数据库表结构已全部初始化就绪！'}`);
       handleRunHealthCheck();
     } catch (err: any) {
-      alert(`初始化失败: ${err.message}\n您也可以展开下方的「D1 建表与生产部署指南」查看手动建表 SQL。`);
+      showToast('error', `初始化失败: ${err.message}`);
     } finally {
       setInitLoading(false);
     }
@@ -191,12 +205,16 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     const token = (apiTokenInput || d1Config.apiToken || '').trim();
 
     if (!url) {
-      alert('请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
+      showToast('error', '请先在下方「连接设置」中配置 Cloudflare Worker API 地址');
       return;
     }
-    if (!window.confirm('从 Cloudflare D1 拉取数据将与本地数据合并更新，是否继续？')) {
-      return;
-    }
+    setIsPullConfirmOpen(true);
+  };
+
+  const executePullFromCloud = async () => {
+    setIsPullConfirmOpen(false);
+    const url = (workerUrlInput || d1Config.workerUrl || '').trim();
+    const token = (apiTokenInput || d1Config.apiToken || '').trim();
 
     setPullLoading(true);
     setPullMsg(null);
@@ -230,8 +248,10 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
         ok: true,
         text: `已从 D1 成功同步最新云端数据 (${res.isIncremental ? '增量合并' : '全量同步'})`,
       });
+      showToast('success', '已从云端 D1 成功拉取并合并最新数据');
     } catch (err: any) {
       setPullMsg({ ok: false, text: `拉取失败: ${err.message}` });
+      showToast('error', `拉取失败: ${err.message}`);
     } finally {
       setPullLoading(false);
     }
@@ -240,20 +260,23 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
   const handleCopySql = () => {
     navigator.clipboard.writeText(CLOUDFLARE_D1_SCHEMA_SQL);
     setCopiedSql(true);
+    showToast('info', '建表 SQL 语句已复制到剪贴板');
     setTimeout(() => setCopiedSql(false), 2000);
   };
 
   const wranglerTomlExample = `name = "qiyue-ledger-api"
 main = "src/index.ts"
-compatibility_date = "2024-01-01"
+compatibility_date = "2024-09-23"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "qiyue_ledger_d1"
-database_id = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+database_name = "qiyue_ledger_db"
+database_id = "your-database-id-from-wrangler-d1-create"
 
 [vars]
-AUTH_TOKEN = "your-custom-secret-password"`;
+# 访问凭据密钥，亦可通过 wrangler secret put API_TOKEN 加密配置
+API_TOKEN = "your-custom-secret-password"
+ALLOWED_ORIGIN = "*"`;
 
   const handleCopyWrangler = () => {
     navigator.clipboard.writeText(wranglerTomlExample);
@@ -264,7 +287,73 @@ AUTH_TOKEN = "your-custom-secret-password"`;
   const hasConfig = Boolean(d1Config.workerUrl);
 
   return (
-    <div className="space-y-5 animate-in fade-in duration-200 max-w-5xl mx-auto">
+    <div className="space-y-5 animate-in fade-in duration-200 max-w-5xl mx-auto relative">
+      {/* 实时非阻塞操作通知 Toast */}
+      {toastMsg && (
+        <div
+          className={`fixed top-4 right-4 z-50 px-4 py-2.5 rounded-xl shadow-lg border text-xs flex items-center gap-2 animate-in slide-in-from-top-2 duration-200 ${
+            toastMsg.type === 'success'
+              ? 'bg-emerald-600 text-white border-emerald-500'
+              : toastMsg.type === 'error'
+              ? 'bg-rose-600 text-white border-rose-500'
+              : 'bg-zinc-900 text-white border-zinc-700'
+          }`}
+        >
+          {toastMsg.type === 'success' ? (
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+          ) : toastMsg.type === 'error' ? (
+            <AlertCircle className="w-4 h-4 shrink-0" />
+          ) : (
+            <Sparkles className="w-4 h-4 shrink-0" />
+          )}
+          <span>{toastMsg.text}</span>
+          <button
+            onClick={() => setToastMsg(null)}
+            className="ml-2 hover:opacity-80 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* 从云端拉取数据防误触确认弹窗 (无 window.confirm) */}
+      {isPullConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Download className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  确认从 Cloudflare D1 拉取数据？
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  将自动从云端获取最新记录并与本地现有数据智能增量合并。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsPullConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={executePullFromCloud}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs cursor-pointer transition-colors"
+              >
+                确认拉取并合并
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 顶部标题与核心操作控制台 (移动端窄屏完美自适应网格) */}
       <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
