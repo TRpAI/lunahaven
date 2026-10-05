@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { FiveInsuranceRates, OvertimeRecord, SalaryCustomItem, SalaryRecord } from '../../types';
 import { exportOvertimesToCsv, exportSalariesToCsv, triggerFileDownload } from '../../utils/exportImport';
+import { loadCustomSalaryPreferences, saveCustomSalaryPreferences } from '../../utils/storage';
 import { calculateSalaryBreakdown, formatCurrency } from '../../utils/taxCalculator';
 import { Pagination } from '../Pagination';
 
@@ -192,9 +193,28 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
   // --- Salary Modal State ---
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
   const [editingSalaryId, setEditingSalaryId] = useState<string | null>(null);
-  const [expandedSalaryId, setExpandedSalaryId] = useState<string | null>(
-    salaries.length > 0 ? salaries[0].id : null
-  );
+  // 默认全部折叠仅显示概要信息，点击卡片展开详细信息
+  const [expandedSalaryIds, setExpandedSalaryIds] = useState<Set<string>>(new Set());
+
+  const toggleExpandSalary = (id: string) => {
+    setExpandedSalaryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleToggleAllSalaries = () => {
+    if (expandedSalaryIds.size === paginatedSalaries.length && paginatedSalaries.length > 0) {
+      setExpandedSalaryIds(new Set());
+    } else {
+      setExpandedSalaryIds(new Set(paginatedSalaries.map((s) => s.id)));
+    }
+  };
 
   const [salaryForm, setSalaryForm] = useState({
     month: new Date().toISOString().slice(0, 7),
@@ -673,6 +693,15 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     const nightDays = nightShiftOts.length;
     const nightSubsidyTotal = nightShiftOts.reduce((sum, o) => sum + (Number(o.nightShiftSubsidy) || 50), 0);
 
+    // 读取上次记忆的五险一金自定义设置与其它扣除项（自动带入，直到再次自定义设置）
+    const rememberedPref = loadCustomSalaryPreferences(salaries);
+    const useRememberedInsurance = Boolean(rememberedPref?.isCustomInsurance);
+    const initialCustomDeductions: SalaryCustomItem[] = (rememberedPref?.customDeductions || []).map((d, i) => ({
+      id: `ded-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 6)}`,
+      name: d.name,
+      amount: d.amount,
+    }));
+
     setSalaryForm({
       month,
       companyName: salaries.length > 0 ? salaries[0].companyName || '' : '科技创新互联网科技有限公司',
@@ -695,19 +724,19 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       customAllowances: [],
       allowance: nightSubsidyTotal,
 
-      isCustomInsurance: false,
-      customPersonalPension: 0,
-      customPersonalMedical: 0,
-      customPersonalUnemployment: 0,
-      customPersonalHousingFund: 0,
-      customCompanyPension: 0,
-      customCompanyMedical: 0,
-      customCompanyUnemployment: 0,
-      customCompanyInjury: 0,
-      customCompanyMaternity: 0,
-      customCompanyHousingFund: 0,
+      isCustomInsurance: useRememberedInsurance,
+      customPersonalPension: useRememberedInsurance ? Number(rememberedPref?.customPersonalPension || 0) : 0,
+      customPersonalMedical: useRememberedInsurance ? Number(rememberedPref?.customPersonalMedical || 0) : 0,
+      customPersonalUnemployment: useRememberedInsurance ? Number(rememberedPref?.customPersonalUnemployment || 0) : 0,
+      customPersonalHousingFund: useRememberedInsurance ? Number(rememberedPref?.customPersonalHousingFund || 0) : 0,
+      customCompanyPension: useRememberedInsurance ? Number(rememberedPref?.customCompanyPension || 0) : 0,
+      customCompanyMedical: useRememberedInsurance ? Number(rememberedPref?.customCompanyMedical || 0) : 0,
+      customCompanyUnemployment: useRememberedInsurance ? Number(rememberedPref?.customCompanyUnemployment || 0) : 0,
+      customCompanyInjury: useRememberedInsurance ? Number(rememberedPref?.customCompanyInjury || 0) : 0,
+      customCompanyMaternity: useRememberedInsurance ? Number(rememberedPref?.customCompanyMaternity || 0) : 0,
+      customCompanyHousingFund: useRememberedInsurance ? Number(rememberedPref?.customCompanyHousingFund || 0) : 0,
 
-      customDeductions: [],
+      customDeductions: initialCustomDeductions,
 
       otherBonus: 0,
       preTaxDeduction: 0,
@@ -840,6 +869,26 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     };
 
     onSaveSalary(newRecord);
+
+    // 记忆用户的五险一金自定义设置与其它扣除项，下次新建自动带入，直到再次自定义设置
+    saveCustomSalaryPreferences({
+      isCustomInsurance: salaryForm.isCustomInsurance,
+      customPersonalPension: salaryForm.isCustomInsurance ? Number(salaryForm.customPersonalPension) || 0 : 0,
+      customPersonalMedical: salaryForm.isCustomInsurance ? Number(salaryForm.customPersonalMedical) || 0 : 0,
+      customPersonalUnemployment: salaryForm.isCustomInsurance ? Number(salaryForm.customPersonalUnemployment) || 0 : 0,
+      customPersonalHousingFund: salaryForm.isCustomInsurance ? Number(salaryForm.customPersonalHousingFund) || 0 : 0,
+      customCompanyPension: salaryForm.isCustomInsurance ? Number(salaryForm.customCompanyPension) || 0 : 0,
+      customCompanyMedical: salaryForm.isCustomInsurance ? Number(salaryForm.customCompanyMedical) || 0 : 0,
+      customCompanyUnemployment: salaryForm.isCustomInsurance ? Number(salaryForm.customCompanyUnemployment) || 0 : 0,
+      customCompanyInjury: salaryForm.isCustomInsurance ? Number(salaryForm.customCompanyInjury) || 0 : 0,
+      customCompanyMaternity: salaryForm.isCustomInsurance ? Number(salaryForm.customCompanyMaternity) || 0 : 0,
+      customCompanyHousingFund: salaryForm.isCustomInsurance ? Number(salaryForm.customCompanyHousingFund) || 0 : 0,
+      customDeductions: salaryForm.customDeductions.map((d) => ({
+        name: d.name,
+        amount: Number(d.amount) || 0,
+      })),
+    });
+
     setIsSalaryModalOpen(false);
   };
 
@@ -1059,51 +1108,126 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
             </div>
           ) : (
             <>
+              {/* 薪酬五险一金概览与批量展开/折叠栏 */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+                <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    发放记录: <strong className="text-zinc-900 dark:text-zinc-100 font-semibold">{salaries.length} 个月</strong>
+                  </span>
+                  <span className="text-zinc-300 dark:text-zinc-700">|</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    累计税后实发: <strong className="text-emerald-600 dark:text-emerald-400 font-mono font-bold">{formatCurrency(stats.totalNetSalary, hidePrivacy)}</strong>
+                  </span>
+                  <span className="text-zinc-300 dark:text-zinc-700">|</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    累计个人五险一金: <strong className="text-blue-600 dark:text-blue-400 font-mono font-bold">{formatCurrency(stats.totalPersonalInsurance, hidePrivacy)}</strong>
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleAllSalaries}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 transition-colors cursor-pointer text-xs font-medium"
+                    title={expandedSalaryIds.size === paginatedSalaries.length ? '全部收起为概要列表' : '一键展开所有月份的详细信息'}
+                  >
+                    {expandedSalaryIds.size === paginatedSalaries.length && paginatedSalaries.length > 0 ? (
+                      <>
+                        <ChevronUp className="w-3.5 h-3.5" />
+                        <span>全部收起为概要</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown className="w-3.5 h-3.5" />
+                        <span>全部展开详细信息</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
               {paginatedSalaries.map((s) => {
-                const isExpanded = expandedSalaryId === s.id;
+                const isExpanded = expandedSalaryIds.has(s.id);
                 return (
                   <div
                     key={s.id}
-                    className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden transition-all"
+                    className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
                   >
+                    {/* 概要信息行 (点击展开/折叠详细信息) */}
                     <div
-                      onClick={() => setExpandedSalaryId(isExpanded ? null : s.id)}
-                      className="p-4 sm:p-5 flex items-center justify-between gap-4 cursor-pointer hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40"
+                      onClick={() => toggleExpandSalary(s.id)}
+                      className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4 cursor-pointer hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors"
                     >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono font-bold flex items-center justify-center text-xs">
-                          {s.month.slice(5)}月
+                      <div className="flex items-start sm:items-center gap-3 min-w-0">
+                        <div className="w-11 h-11 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 font-mono font-bold flex flex-col items-center justify-center text-xs shrink-0 border border-blue-500/20">
+                          <span className="text-[10px] text-blue-400 font-normal leading-none">{s.month.slice(0, 4)}</span>
+                          <span className="text-sm font-black leading-none mt-0.5">{s.month.slice(5)}月</span>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
+
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-sm font-bold text-zinc-900 dark:text-zinc-100 font-mono">{s.month}</span>
-                            <span className="text-xs text-zinc-500 dark:text-zinc-400">{s.companyName}</span>
+                            <span className="text-xs text-zinc-600 dark:text-zinc-400 font-medium truncate max-w-[200px]">{s.companyName}</span>
+                            {s.isCustomInsurance && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-300 border border-blue-200/50 dark:border-blue-900/50">
+                                🛡️ 微调五险一金
+                              </span>
+                            )}
+                            {(s.nightShiftDays || 0) > 0 && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded font-medium bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-300 border border-indigo-200/50 dark:border-indigo-900/50">
+                                🌙 长夜班 {s.nightShiftDays}天
+                              </span>
+                            )}
+                            {s.payDate && (
+                              <span className="text-[10px] text-zinc-400 font-mono hidden sm:inline-block">
+                                发放: {s.payDate}
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-2">
-                            <span>应发: {formatCurrency(s.grossSalary, hidePrivacy)}</span>
-                            <span>·</span>
-                            <span>个税: {formatCurrency(s.individualIncomeTax, hidePrivacy)}</span>
-                            <span>·</span>
-                            <span>个人社保公积金: {formatCurrency(s.totalPersonalInsurance, hidePrivacy)}</span>
+
+                          {/* 概要核心数据指标胶囊栏 */}
+                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 flex flex-wrap items-center gap-x-2.5 gap-y-1 font-mono">
+                            <span>底薪: <strong className="text-zinc-700 dark:text-zinc-300 font-semibold">{formatCurrency(s.baseSalary, hidePrivacy)}</strong></span>
+                            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+                            <span>应发: <strong className="text-zinc-800 dark:text-zinc-200 font-bold">{formatCurrency(s.grossSalary, hidePrivacy)}</strong></span>
+                            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+                            <span>五险一金: <strong className="text-blue-600 dark:text-blue-400 font-semibold">-{formatCurrency(s.totalPersonalInsurance, hidePrivacy)}</strong></span>
+                            <span className="text-zinc-300 dark:text-zinc-700">·</span>
+                            <span>个税: <strong className="text-amber-600 dark:text-amber-400 font-semibold">-{formatCurrency(s.individualIncomeTax, hidePrivacy)}</strong></span>
+                            {(s.otherDeductionsTotal || 0) > 0 && (
+                              <>
+                                <span className="text-zinc-300 dark:text-zinc-700">·</span>
+                                <span>其它扣除: <strong className="text-rose-500 font-semibold">-{formatCurrency(s.otherDeductionsTotal || 0, hidePrivacy)}</strong></span>
+                              </>
+                            )}
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
+                      <div className="flex items-center justify-between md:justify-end gap-3 sm:gap-4 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-zinc-100 dark:border-zinc-800/80">
+                        <div className="text-left md:text-right">
                           <div className="text-base sm:text-lg font-bold font-mono text-emerald-600 dark:text-emerald-400">
                             {formatCurrency(s.netSalary, hidePrivacy)}
                           </div>
                           <div className="text-[10px] text-zinc-400">税后实发到手</div>
                         </div>
 
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`hidden sm:inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-xl font-medium transition-colors ${
+                            isExpanded
+                              ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                              : 'bg-zinc-50 dark:bg-zinc-800/60 text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300'
+                          }`}>
+                            {isExpanded ? '收起详情' : '展开详情'}
+                          </span>
+
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               handleOpenEditSalary(s);
                             }}
-                            className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                            className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
+                            title="编辑此薪资条"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -1114,11 +1238,14 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                                 onDeleteSalary(s.id);
                               }
                             }}
-                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
+                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500 cursor-pointer"
+                            title="删除此薪资条"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
-                          {isExpanded ? <ChevronUp className="w-4 h-4 text-zinc-400" /> : <ChevronDown className="w-4 h-4 text-zinc-400" />}
+                          <div className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -2166,13 +2293,18 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     </label>
 
                     {salaryForm.isCustomInsurance && (
-                      <button
-                        type="button"
-                        onClick={handleResetStandardInsurance}
-                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                      >
-                        ⚡ 恢复标准费率测算
-                      </button>
+                      <>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-300 font-medium hidden sm:inline-block">
+                          ✨ 自动记忆带入下次新建
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleResetStandardInsurance}
+                          className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          ⚡ 恢复标准费率测算
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -2256,9 +2388,16 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                 {/* 其它可自定义扣除项 */}
                 <div className="space-y-2 pt-1 border-t border-zinc-200/60 dark:border-zinc-800">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
-                      其它扣除项 (企业年金 / 工会会费 / 水电房租 / 考勤扣款等)
-                    </span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                        其它扣除项 (企业年金 / 工会会费 / 水电房租 / 考勤扣款等)
+                      </span>
+                      {salaryForm.customDeductions.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-300 font-medium">
+                          ✨ 自动记忆带入
+                        </span>
+                      )}
+                    </div>
                     <button
                       type="button"
                       onClick={() => handleAddCustomDeduction('工会会费', 50)}

@@ -791,3 +791,75 @@ export function clearAllLedgerData(): LedgerFullData {
   saveLedgerData(empty);
   return empty;
 }
+
+export interface CustomSalaryPreferences {
+  isCustomInsurance: boolean;
+  customPersonalPension?: number;
+  customPersonalMedical?: number;
+  customPersonalUnemployment?: number;
+  customPersonalHousingFund?: number;
+  customCompanyPension?: number;
+  customCompanyMedical?: number;
+  customCompanyUnemployment?: number;
+  customCompanyInjury?: number;
+  customCompanyMaternity?: number;
+  customCompanyHousingFund?: number;
+  customDeductions?: Array<{ name: string; amount: number }>;
+}
+
+const SALARY_PREFERENCES_KEY = 'qiyue_salary_custom_preferences_v1';
+
+/**
+ * 读取记忆的五险一金自定义设置和其它扣除项
+ * 优先读取本地持久化偏好，若无则自动回退至最近一份自定义设置过的薪资记录
+ */
+export function loadCustomSalaryPreferences(salaries?: SalaryRecord[]): CustomSalaryPreferences | null {
+  try {
+    const raw = localStorage.getItem(SALARY_PREFERENCES_KEY);
+    if (raw) {
+      return JSON.parse(raw);
+    }
+  } catch (err) {
+    console.error('Failed to load custom salary preferences from storage', err);
+  }
+
+  // 自动回退：从历史记录中检测最近一份自定义设置过五险一金或其它扣除项的薪资
+  if (salaries && salaries.length > 0) {
+    const sorted = [...salaries].sort((a, b) => b.month.localeCompare(a.month));
+    const recentCustom = sorted.find(
+      (s) => s.isCustomInsurance || (s.customDeductions && s.customDeductions.length > 0)
+    );
+    if (recentCustom) {
+      return {
+        isCustomInsurance: Boolean(recentCustom.isCustomInsurance),
+        customPersonalPension: recentCustom.pensionPersonal,
+        customPersonalMedical: recentCustom.medicalPersonal,
+        customPersonalUnemployment: recentCustom.unemploymentPersonal,
+        customPersonalHousingFund: recentCustom.housingFundPersonal,
+        customCompanyPension: recentCustom.pensionCompany,
+        customCompanyMedical: recentCustom.medicalCompany,
+        customCompanyUnemployment: recentCustom.unemploymentCompany,
+        customCompanyInjury: recentCustom.injuryCompany,
+        customCompanyMaternity: recentCustom.maternityCompany,
+        customCompanyHousingFund: recentCustom.housingFundCompany,
+        customDeductions: (recentCustom.customDeductions || []).map((d) => ({
+          name: d.name,
+          amount: d.amount,
+        })),
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * 记忆保存五险一金自定义设置与其它扣除项
+ */
+export function saveCustomSalaryPreferences(pref: CustomSalaryPreferences): void {
+  try {
+    localStorage.setItem(SALARY_PREFERENCES_KEY, JSON.stringify(pref));
+  } catch (err) {
+    console.error('Failed to save custom salary preferences', err);
+  }
+}
