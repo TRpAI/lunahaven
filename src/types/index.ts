@@ -3,6 +3,12 @@
  * Cloudflare D1 + Local-First Personal Life & Financial Ledger
  */
 
+export interface SalaryCustomItem {
+  id: string;
+  name: string;
+  amount: number;
+}
+
 export interface SalaryRecord {
   id: string;
   month: string; // YYYY-MM
@@ -15,12 +21,33 @@ export interface SalaryRecord {
   preTaxDeduction: number; // 税前扣除(事假/缺勤)
   grossSalary: number; // 应发工资合计
 
+  // 加班费明细拆解 (1.5倍 / 2倍 / 3倍)
+  overtime15Hours?: number;
+  overtime15Pay?: number;
+  overtime20Hours?: number;
+  overtime20Pay?: number;
+  overtime30Hours?: number;
+  overtime30Pay?: number;
+
+  // 补贴明细拆解 (长夜班 / 全勤 / 自定义补贴)
+  nightShiftDays?: number; // 长夜班天数
+  nightShiftRate?: number; // 长夜班每日补贴标准 (元/天)
+  nightShiftPay?: number; // 长夜班补贴金额 (天数 × 单价)
+  fullAttendancePay?: number; // 全勤补贴
+  baseAllowance?: number; // 基础常规津贴(餐饮/交通等)
+  customAllowances?: SalaryCustomItem[]; // 其它可自定义补贴
+
   // 个人承担五险一金
   pensionPersonal: number; // 养老 8%
   medicalPersonal: number; // 医疗 2% (+大病)
   unemploymentPersonal: number; // 失业 0.5%
   housingFundPersonal: number; // 公积金 5%~12%
   totalPersonalInsurance: number; // 个人五险一金合计
+
+  // 扣除项扩展 (五险一金自定义与其它扣除项)
+  isCustomInsurance?: boolean; // 是否启用五险一金自定义微调
+  customDeductions?: SalaryCustomItem[]; // 其它自定义扣除项(企业年金/工会会费/水电宿舍/考勤扣款等)
+  otherDeductionsTotal?: number; // 其它扣除项合计金额
 
   // 企业承担五险一金
   pensionCompany: number; // 养老 16%
@@ -64,6 +91,8 @@ export interface OvertimeRecord {
   compTimeHoursUsed?: number; // 已消耗调休时长
   reason: string; // 加班事项/项目
   approver?: string; // 审批人/领导
+  isNightShift?: boolean; // 是否是长夜班 (享受长夜班补贴)
+  nightShiftSubsidy?: number; // 长夜班补贴金额 (如 50 元/天)
   notes: string;
   createdAt: string;
   updatedAt?: string;

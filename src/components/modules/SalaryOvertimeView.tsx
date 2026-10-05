@@ -3,6 +3,7 @@ import {
   ArrowRight,
   Banknote,
   Building2,
+  Calculator,
   Calendar,
   CheckCircle2,
   ChevronDown,
@@ -13,14 +14,17 @@ import {
   Edit2,
   FileSpreadsheet,
   Link,
+  Moon,
   Plus,
   Receipt,
   ShieldCheck,
+  Sliders,
+  Sparkles,
   Trash2,
   TrendingUp,
   X,
 } from 'lucide-react';
-import { FiveInsuranceRates, OvertimeRecord, SalaryRecord } from '../../types';
+import { FiveInsuranceRates, OvertimeRecord, SalaryCustomItem, SalaryRecord } from '../../types';
 import { exportOvertimesToCsv, exportSalariesToCsv, triggerFileDownload } from '../../utils/exportImport';
 import { calculateSalaryBreakdown, formatCurrency } from '../../utils/taxCalculator';
 import { Pagination } from '../Pagination';
@@ -86,6 +90,7 @@ export const OVERTIME_SHIFT_PRESETS = [
     hours: 3,
     type: 'workday' as const,
     multiplier: 1.5,
+    isNightShift: false,
   },
   {
     label: '晚间深加班',
@@ -95,33 +100,17 @@ export const OVERTIME_SHIFT_PRESETS = [
     hours: 4,
     type: 'workday' as const,
     multiplier: 1.5,
+    isNightShift: false,
   },
   {
-    label: '周末半天(早)',
-    span: '08:00~12:00',
+    label: '周末全天(8h)',
+    span: '08:00~17:00 (休1h)',
     start: '08:00',
-    end: '12:00',
-    hours: 4,
-    type: 'weekend' as const,
-    multiplier: 2.0,
-  },
-  {
-    label: '周末半天(午)',
-    span: '12:00~17:00',
-    start: '12:00',
     end: '17:00',
-    hours: 5,
-    type: 'weekend' as const,
-    multiplier: 2.0,
-  },
-  {
-    label: '周末半天(晚)',
-    span: '12:00~20:00',
-    start: '12:00',
-    end: '20:00',
     hours: 8,
     type: 'weekend' as const,
     multiplier: 2.0,
+    isNightShift: false,
   },
   {
     label: '周末全天(11h)',
@@ -131,6 +120,7 @@ export const OVERTIME_SHIFT_PRESETS = [
     hours: 11,
     type: 'weekend' as const,
     multiplier: 2.0,
+    isNightShift: false,
   },
   {
     label: '周末全天(夜12h)',
@@ -140,15 +130,37 @@ export const OVERTIME_SHIFT_PRESETS = [
     hours: 12,
     type: 'weekend' as const,
     multiplier: 2.0,
+    isNightShift: true,
   },
   {
-    label: '周末全天(9h)',
-    span: '08:00~17:00',
+    label: '国定假日(8h)',
+    span: '08:00~17:00 (休1h)',
     start: '08:00',
     end: '17:00',
-    hours: 9,
-    type: 'weekend' as const,
-    multiplier: 2.0,
+    hours: 8,
+    type: 'holiday' as const,
+    multiplier: 3.0,
+    isNightShift: false,
+  },
+  {
+    label: '国定假日(11h)',
+    span: '08:00~20:00 (休1h)',
+    start: '08:00',
+    end: '20:00',
+    hours: 11,
+    type: 'holiday' as const,
+    multiplier: 3.0,
+    isNightShift: false,
+  },
+  {
+    label: '国定假日(夜12h)',
+    span: '20:00~08:00',
+    start: '20:00',
+    end: '08:00',
+    hours: 12,
+    type: 'holiday' as const,
+    multiplier: 3.0,
+    isNightShift: true,
   },
 ];
 
@@ -189,14 +201,87 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     companyName: '科技创新互联网科技有限公司',
     baseSalary: 18000,
     performancePay: 4500,
-    overtimePay: 1500,
-    allowance: 1200,
+
+    // 加班费拆解 (1.5倍、2倍、3倍加班工资)
+    overtime15Hours: 0,
+    overtime15Pay: 0,
+    overtime20Hours: 0,
+    overtime20Pay: 0,
+    overtime30Hours: 0,
+    overtime30Pay: 0,
+    overtimePay: 0, // 合计自动计算
+
+    // 补贴拆解 (长夜班天数/补贴、全勤补贴、基础津贴、其它自定义补贴)
+    nightShiftDays: 0,
+    nightShiftRate: 50,
+    nightShiftPay: 0,
+    fullAttendancePay: 0,
+    baseAllowance: 0,
+    customAllowances: [] as SalaryCustomItem[],
+    allowance: 0, // 合计自动计算
+
+    // 五险一金自定义微调设置
+    isCustomInsurance: false,
+    customPersonalPension: 0,
+    customPersonalMedical: 0,
+    customPersonalUnemployment: 0,
+    customPersonalHousingFund: 0,
+    customCompanyPension: 0,
+    customCompanyMedical: 0,
+    customCompanyUnemployment: 0,
+    customCompanyInjury: 0,
+    customCompanyMaternity: 0,
+    customCompanyHousingFund: 0,
+
+    // 其它可自定义扣除项 (企业年金/工会经费/水电住宿/缺勤扣款等)
+    customDeductions: [] as SalaryCustomItem[],
+
     otherBonus: 0,
     preTaxDeduction: 0,
     specialDeductions: 3000,
     payDate: `${new Date().toISOString().slice(0, 7)}-10`,
     notes: '',
   });
+
+  // 其它扣除项金额合计
+  const otherDeductionsTotal = useMemo(() => {
+    return salaryForm.customDeductions.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  }, [salaryForm.customDeductions]);
+
+  // 自定义补贴金额合计
+  const customAllowancesTotal = useMemo(() => {
+    return salaryForm.customAllowances.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+  }, [salaryForm.customAllowances]);
+
+  // 计算当前薪资表单的实时预演
+  const salaryCalc = useMemo(() => {
+    return calculateSalaryBreakdown({
+      baseSalary: Number(salaryForm.baseSalary) || 0,
+      performancePay: Number(salaryForm.performancePay) || 0,
+      overtimePay: Number(salaryForm.overtimePay) || 0,
+      allowance: Number(salaryForm.allowance) || 0,
+      otherBonus: Number(salaryForm.otherBonus) || 0,
+      preTaxDeduction: Number(salaryForm.preTaxDeduction) || 0,
+      specialDeductions: Number(salaryForm.specialDeductions) || 0,
+      rates: defaultRates,
+      isCustomInsurance: salaryForm.isCustomInsurance,
+      customPersonalInsurance: {
+        pensionPersonal: Number(salaryForm.customPersonalPension) || 0,
+        medicalPersonal: Number(salaryForm.customPersonalMedical) || 0,
+        unemploymentPersonal: Number(salaryForm.customPersonalUnemployment) || 0,
+        housingFundPersonal: Number(salaryForm.customPersonalHousingFund) || 0,
+      },
+      customCompanyInsurance: {
+        pensionCompany: Number(salaryForm.customCompanyPension) || 0,
+        medicalCompany: Number(salaryForm.customCompanyMedical) || 0,
+        unemploymentCompany: Number(salaryForm.customCompanyUnemployment) || 0,
+        injuryCompany: Number(salaryForm.customCompanyInjury) || 0,
+        maternityCompany: Number(salaryForm.customCompanyMaternity) || 0,
+        housingFundCompany: Number(salaryForm.customCompanyHousingFund) || 0,
+      },
+      otherDeductionsTotal,
+    });
+  }, [salaryForm, defaultRates, otherDeductionsTotal]);
 
   // --- Overtime Modal State ---
   const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
@@ -212,24 +297,12 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     multiplier: 1.5,
     settlementType: 'paid' as 'paid' | 'comp_time' | 'pending',
     hourlyRate: Number((defaultBaseSalary / 21.75 / 8).toFixed(2)) || 103.45,
+    isNightShift: false, // 是否是长夜班
+    nightShiftSubsidy: 50, // 长夜班补贴 (元/天)
     reason: '',
     approver: '',
     notes: '',
   });
-
-  // 计算当前薪资表单的实时预演
-  const salaryCalc = useMemo(() => {
-    return calculateSalaryBreakdown({
-      baseSalary: Number(salaryForm.baseSalary) || 0,
-      performancePay: Number(salaryForm.performancePay) || 0,
-      overtimePay: Number(salaryForm.overtimePay) || 0,
-      allowance: Number(salaryForm.allowance) || 0,
-      otherBonus: Number(salaryForm.otherBonus) || 0,
-      preTaxDeduction: Number(salaryForm.preTaxDeduction) || 0,
-      specialDeductions: Number(salaryForm.specialDeductions) || 0,
-      rates: defaultRates,
-    });
-  }, [salaryForm, defaultRates]);
 
   // 综合数据指标统计
   const stats = useMemo(() => {
@@ -245,12 +318,18 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     const paidOvertimes = overtimes.filter((o) => o.settlementType === 'paid');
     const totalPaidOvertimeAmount = paidOvertimes.reduce((sum, o) => sum + (o.estimatedPay || 0), 0);
 
+    const nightShiftOvertimes = overtimes.filter((o) => o.isNightShift);
+    const totalNightShiftDays = nightShiftOvertimes.length;
+    const totalNightShiftSubsidy = nightShiftOvertimes.reduce((sum, o) => sum + (Number(o.nightShiftSubsidy) || 50), 0);
+
     return {
       totalNetSalary,
       totalPersonalInsurance,
       totalOvertimeHours,
       remainingCompTime,
       totalPaidOvertimeAmount,
+      totalNightShiftDays,
+      totalNightShiftSubsidy,
     };
   }, [salaries, overtimes]);
 
@@ -316,20 +395,324 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     return monthlyLinkageData.slice(start, start + linkagePageSize);
   }, [monthlyLinkageData, linkagePage, linkagePageSize]);
 
-  // --- Handlers: Salary ---
+  // --- Handlers: Salary Calculations & Helpers ---
+  const handleOvertimePayChange = (type: '15' | '20' | '30', value: number) => {
+    const p15 = type === '15' ? value : Number(salaryForm.overtime15Pay) || 0;
+    const p20 = type === '20' ? value : Number(salaryForm.overtime20Pay) || 0;
+    const p30 = type === '30' ? value : Number(salaryForm.overtime30Pay) || 0;
+    const total = Math.round((p15 + p20 + p30) * 100) / 100;
+    setSalaryForm({
+      ...salaryForm,
+      overtime15Pay: p15,
+      overtime20Pay: p20,
+      overtime30Pay: p30,
+      overtimePay: total,
+    });
+  };
+
+  const handleOvertimeHoursChange = (type: '15' | '20' | '30', hours: number) => {
+    const mult = type === '15' ? 1.5 : type === '20' ? 2.0 : 3.0;
+    const hourly = Number((salaryForm.baseSalary / 21.75 / 8).toFixed(2));
+    const pay = Math.round(hours * hourly * mult * 100) / 100;
+
+    const p15 = type === '15' ? pay : Number(salaryForm.overtime15Pay) || 0;
+    const p20 = type === '20' ? pay : Number(salaryForm.overtime20Pay) || 0;
+    const p30 = type === '30' ? pay : Number(salaryForm.overtime30Pay) || 0;
+    const total = Math.round((p15 + p20 + p30) * 100) / 100;
+
+    setSalaryForm({
+      ...salaryForm,
+      ...(type === '15' ? { overtime15Hours: hours, overtime15Pay: pay } : {}),
+      ...(type === '20' ? { overtime20Hours: hours, overtime20Pay: pay } : {}),
+      ...(type === '30' ? { overtime30Hours: hours, overtime30Pay: pay } : {}),
+      overtimePay: total,
+    });
+  };
+
+  const handleImportMonthOvertimes = () => {
+    const month = salaryForm.month;
+    const monthPaidOts = overtimes.filter((o) => o.date.startsWith(month) && o.settlementType === 'paid');
+    let h15 = 0, p15 = 0;
+    let h20 = 0, p20 = 0;
+    let h30 = 0, p30 = 0;
+
+    for (const o of monthPaidOts) {
+      if (o.type === 'workday' || o.multiplier <= 1.5) {
+        h15 += o.durationHours;
+        p15 += o.estimatedPay || 0;
+      } else if (o.type === 'holiday' || o.multiplier >= 3.0) {
+        h30 += o.durationHours;
+        p30 += o.estimatedPay || 0;
+      } else {
+        h20 += o.durationHours;
+        p20 += o.estimatedPay || 0;
+      }
+    }
+    p15 = Math.round(p15 * 100) / 100;
+    p20 = Math.round(p20 * 100) / 100;
+    p30 = Math.round(p30 * 100) / 100;
+    const total = Math.round((p15 + p20 + p30) * 100) / 100;
+
+    const nightShiftOts = monthPaidOts.filter((o) => o.isNightShift);
+    const nightDays = nightShiftOts.length;
+    const nightSubsidyTotal = nightShiftOts.reduce((sum, o) => sum + (Number(o.nightShiftSubsidy) || 50), 0);
+
+    const customTotal = salaryForm.customAllowances.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const newAllowance = Math.round(
+      (nightSubsidyTotal + Number(salaryForm.fullAttendancePay || 0) + Number(salaryForm.baseAllowance || 0) + customTotal) * 100
+    ) / 100;
+
+    setSalaryForm({
+      ...salaryForm,
+      overtime15Hours: Math.round(h15 * 10) / 10,
+      overtime15Pay: p15,
+      overtime20Hours: Math.round(h20 * 10) / 10,
+      overtime20Pay: p20,
+      overtime30Hours: Math.round(h30 * 10) / 10,
+      overtime30Pay: p30,
+      overtimePay: total,
+      ...(nightDays > 0
+        ? {
+            nightShiftDays: nightDays,
+            nightShiftRate: nightDays > 0 ? Math.round(nightSubsidyTotal / nightDays) : 50,
+            nightShiftPay: nightSubsidyTotal,
+            allowance: newAllowance,
+          }
+        : {}),
+    });
+  };
+
+  const handleNightShiftChange = (days: number, rate: number) => {
+    const nightPay = Math.round(days * rate * 100) / 100;
+    const customTotal = salaryForm.customAllowances.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const total = Math.round((nightPay + Number(salaryForm.fullAttendancePay || 0) + Number(salaryForm.baseAllowance || 0) + customTotal) * 100) / 100;
+
+    setSalaryForm({
+      ...salaryForm,
+      nightShiftDays: days,
+      nightShiftRate: rate,
+      nightShiftPay: nightPay,
+      allowance: total,
+    });
+  };
+
+  const handleNightShiftPayDirectChange = (nightPay: number) => {
+    const customTotal = salaryForm.customAllowances.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const total = Math.round((nightPay + Number(salaryForm.fullAttendancePay || 0) + Number(salaryForm.baseAllowance || 0) + customTotal) * 100) / 100;
+    setSalaryForm({
+      ...salaryForm,
+      nightShiftPay: nightPay,
+      allowance: total,
+    });
+  };
+
+  const handleFullAttendanceChange = (amount: number) => {
+    const customTotal = salaryForm.customAllowances.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const total = Math.round((Number(salaryForm.nightShiftPay || 0) + amount + Number(salaryForm.baseAllowance || 0) + customTotal) * 100) / 100;
+    setSalaryForm({
+      ...salaryForm,
+      fullAttendancePay: amount,
+      allowance: total,
+    });
+  };
+
+  const handleBaseAllowanceChange = (amount: number) => {
+    const customTotal = salaryForm.customAllowances.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const total = Math.round((Number(salaryForm.nightShiftPay || 0) + Number(salaryForm.fullAttendancePay || 0) + amount + customTotal) * 100) / 100;
+    setSalaryForm({
+      ...salaryForm,
+      baseAllowance: amount,
+      allowance: total,
+    });
+  };
+
+  const handleAddCustomAllowance = (name = '岗位津贴', amount = 0) => {
+    const newItem: SalaryCustomItem = {
+      id: `allow-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      amount,
+    };
+    const updated = [...salaryForm.customAllowances, newItem];
+    const customTotal = updated.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const total = Math.round((Number(salaryForm.nightShiftPay || 0) + Number(salaryForm.fullAttendancePay || 0) + Number(salaryForm.baseAllowance || 0) + customTotal) * 100) / 100;
+    setSalaryForm({
+      ...salaryForm,
+      customAllowances: updated,
+      allowance: total,
+    });
+  };
+
+  const handleUpdateCustomAllowance = (id: string, name: string, amount: number) => {
+    const updated = salaryForm.customAllowances.map((item) => (item.id === id ? { ...item, name, amount } : item));
+    const customTotal = updated.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const total = Math.round((Number(salaryForm.nightShiftPay || 0) + Number(salaryForm.fullAttendancePay || 0) + Number(salaryForm.baseAllowance || 0) + customTotal) * 100) / 100;
+    setSalaryForm({
+      ...salaryForm,
+      customAllowances: updated,
+      allowance: total,
+    });
+  };
+
+  const handleRemoveCustomAllowance = (id: string) => {
+    const updated = salaryForm.customAllowances.filter((item) => item.id !== id);
+    const customTotal = updated.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+    const total = Math.round((Number(salaryForm.nightShiftPay || 0) + Number(salaryForm.fullAttendancePay || 0) + Number(salaryForm.baseAllowance || 0) + customTotal) * 100) / 100;
+    setSalaryForm({
+      ...salaryForm,
+      customAllowances: updated,
+      allowance: total,
+    });
+  };
+
+  const handleAddCustomDeduction = (name = '工会会费', amount = 0) => {
+    const newItem: SalaryCustomItem = {
+      id: `ded-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      name,
+      amount,
+    };
+    setSalaryForm({
+      ...salaryForm,
+      customDeductions: [...salaryForm.customDeductions, newItem],
+    });
+  };
+
+  const handleUpdateCustomDeduction = (id: string, name: string, amount: number) => {
+    setSalaryForm({
+      ...salaryForm,
+      customDeductions: salaryForm.customDeductions.map((item) =>
+        item.id === id ? { ...item, name, amount } : item
+      ),
+    });
+  };
+
+  const handleRemoveCustomDeduction = (id: string) => {
+    setSalaryForm({
+      ...salaryForm,
+      customDeductions: salaryForm.customDeductions.filter((item) => item.id !== id),
+    });
+  };
+
+  const handleToggleCustomInsurance = (enable: boolean) => {
+    if (enable && salaryForm.customPersonalPension === 0) {
+      // 预先填入标准测算值方便微调
+      setSalaryForm({
+        ...salaryForm,
+        isCustomInsurance: true,
+        customPersonalPension: salaryCalc.pensionPersonal,
+        customPersonalMedical: salaryCalc.medicalPersonal,
+        customPersonalUnemployment: salaryCalc.unemploymentPersonal,
+        customPersonalHousingFund: salaryCalc.housingFundPersonal,
+        customCompanyPension: salaryCalc.pensionCompany,
+        customCompanyMedical: salaryCalc.medicalCompany,
+        customCompanyUnemployment: salaryCalc.unemploymentCompany,
+        customCompanyInjury: salaryCalc.injuryCompany,
+        customCompanyMaternity: salaryCalc.maternityCompany,
+        customCompanyHousingFund: salaryCalc.housingFundCompany,
+      });
+    } else {
+      setSalaryForm({
+        ...salaryForm,
+        isCustomInsurance: enable,
+      });
+    }
+  };
+
+  const handleResetStandardInsurance = () => {
+    const stdCalc = calculateSalaryBreakdown({
+      baseSalary: Number(salaryForm.baseSalary) || 0,
+      performancePay: Number(salaryForm.performancePay) || 0,
+      overtimePay: Number(salaryForm.overtimePay) || 0,
+      allowance: Number(salaryForm.allowance) || 0,
+      otherBonus: Number(salaryForm.otherBonus) || 0,
+      preTaxDeduction: Number(salaryForm.preTaxDeduction) || 0,
+      specialDeductions: Number(salaryForm.specialDeductions) || 0,
+      rates: defaultRates,
+      isCustomInsurance: false,
+    });
+    setSalaryForm({
+      ...salaryForm,
+      customPersonalPension: stdCalc.pensionPersonal,
+      customPersonalMedical: stdCalc.medicalPersonal,
+      customPersonalUnemployment: stdCalc.unemploymentPersonal,
+      customPersonalHousingFund: stdCalc.housingFundPersonal,
+      customCompanyPension: stdCalc.pensionCompany,
+      customCompanyMedical: stdCalc.medicalCompany,
+      customCompanyUnemployment: stdCalc.unemploymentCompany,
+      customCompanyInjury: stdCalc.injuryCompany,
+      customCompanyMaternity: stdCalc.maternityCompany,
+      customCompanyHousingFund: stdCalc.housingFundCompany,
+    });
+  };
+
+  // --- Handlers: Salary Modal Open / Save ---
   const handleOpenAddSalary = () => {
     setEditingSalaryId(null);
+    const month = new Date().toISOString().slice(0, 7);
+
+    // 自动检测当月是否有已登记的加班工时记录
+    const monthPaidOts = overtimes.filter((o) => o.date.startsWith(month) && o.settlementType === 'paid');
+    let h15 = 0, p15 = 0;
+    let h20 = 0, p20 = 0;
+    let h30 = 0, p30 = 0;
+
+    for (const o of monthPaidOts) {
+      if (o.type === 'workday' || o.multiplier <= 1.5) {
+        h15 += o.durationHours;
+        p15 += o.estimatedPay || 0;
+      } else if (o.type === 'holiday' || o.multiplier >= 3.0) {
+        h30 += o.durationHours;
+        p30 += o.estimatedPay || 0;
+      } else {
+        h20 += o.durationHours;
+        p20 += o.estimatedPay || 0;
+      }
+    }
+    const otPay = Math.round((p15 + p20 + p30) * 100) / 100;
+
+    const nightShiftOts = monthPaidOts.filter((o) => o.isNightShift);
+    const nightDays = nightShiftOts.length;
+    const nightSubsidyTotal = nightShiftOts.reduce((sum, o) => sum + (Number(o.nightShiftSubsidy) || 50), 0);
+
     setSalaryForm({
-      month: new Date().toISOString().slice(0, 7),
+      month,
       companyName: salaries.length > 0 ? salaries[0].companyName || '' : '科技创新互联网科技有限公司',
       baseSalary: defaultBaseSalary,
       performancePay: 4500,
-      overtimePay: 1500,
-      allowance: 1200,
+
+      overtime15Hours: Math.round(h15 * 10) / 10,
+      overtime15Pay: Math.round(p15 * 100) / 100,
+      overtime20Hours: Math.round(h20 * 10) / 10,
+      overtime20Pay: Math.round(p20 * 100) / 100,
+      overtime30Hours: Math.round(h30 * 10) / 10,
+      overtime30Pay: Math.round(p30 * 100) / 100,
+      overtimePay: otPay,
+
+      nightShiftDays: nightDays,
+      nightShiftRate: 50,
+      nightShiftPay: nightSubsidyTotal,
+      fullAttendancePay: 0,
+      baseAllowance: 0,
+      customAllowances: [],
+      allowance: nightSubsidyTotal,
+
+      isCustomInsurance: false,
+      customPersonalPension: 0,
+      customPersonalMedical: 0,
+      customPersonalUnemployment: 0,
+      customPersonalHousingFund: 0,
+      customCompanyPension: 0,
+      customCompanyMedical: 0,
+      customCompanyUnemployment: 0,
+      customCompanyInjury: 0,
+      customCompanyMaternity: 0,
+      customCompanyHousingFund: 0,
+
+      customDeductions: [],
+
       otherBonus: 0,
       preTaxDeduction: 0,
       specialDeductions: 3000,
-      payDate: `${new Date().toISOString().slice(0, 7)}-10`,
+      payDate: `${month}-10`,
       notes: '',
     });
     setIsSalaryModalOpen(true);
@@ -337,13 +720,51 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
 
   const handleOpenEditSalary = (s: SalaryRecord) => {
     setEditingSalaryId(s.id);
+
+    const hasSplit = (s.overtime15Pay || 0) + (s.overtime20Pay || 0) + (s.overtime30Pay || 0) > 0;
+    const p15 = s.overtime15Pay || 0;
+    const p20 = hasSplit ? (s.overtime20Pay || 0) : (s.overtimePay || 0);
+    const p30 = s.overtime30Pay || 0;
+
+    const customAllowances = s.customAllowances || [];
+    const customDeductions = s.customDeductions || [];
+
     setSalaryForm({
       month: s.month,
       companyName: s.companyName || '',
       baseSalary: s.baseSalary,
       performancePay: s.performancePay,
+
+      overtime15Hours: s.overtime15Hours || 0,
+      overtime15Pay: p15,
+      overtime20Hours: s.overtime20Hours || 0,
+      overtime20Pay: p20,
+      overtime30Hours: s.overtime30Hours || 0,
+      overtime30Pay: p30,
       overtimePay: s.overtimePay,
+
+      nightShiftDays: s.nightShiftDays || 0,
+      nightShiftRate: s.nightShiftRate || 50,
+      nightShiftPay: s.nightShiftPay || 0,
+      fullAttendancePay: s.fullAttendancePay || 0,
+      baseAllowance: s.baseAllowance !== undefined ? s.baseAllowance : (s.allowance || 0),
+      customAllowances,
       allowance: s.allowance,
+
+      isCustomInsurance: Boolean(s.isCustomInsurance),
+      customPersonalPension: s.pensionPersonal || 0,
+      customPersonalMedical: s.medicalPersonal || 0,
+      customPersonalUnemployment: s.unemploymentPersonal || 0,
+      customPersonalHousingFund: s.housingFundPersonal || 0,
+      customCompanyPension: s.pensionCompany || 0,
+      customCompanyMedical: s.medicalCompany || 0,
+      customCompanyUnemployment: s.unemploymentCompany || 0,
+      customCompanyInjury: s.injuryCompany || 0,
+      customCompanyMaternity: s.maternityCompany || 0,
+      customCompanyHousingFund: s.housingFundCompany || 0,
+
+      customDeductions,
+
       otherBonus: s.otherBonus,
       preTaxDeduction: s.preTaxDeduction,
       specialDeductions: s.specialDeductions,
@@ -361,16 +782,41 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       companyName: salaryForm.companyName,
       baseSalary: Number(salaryForm.baseSalary) || 0,
       performancePay: Number(salaryForm.performancePay) || 0,
+
+      // 加班费拆解 (1.5倍、2倍、3倍)
+      overtime15Hours: Number(salaryForm.overtime15Hours) || 0,
+      overtime15Pay: Number(salaryForm.overtime15Pay) || 0,
+      overtime20Hours: Number(salaryForm.overtime20Hours) || 0,
+      overtime20Pay: Number(salaryForm.overtime20Pay) || 0,
+      overtime30Hours: Number(salaryForm.overtime30Hours) || 0,
+      overtime30Pay: Number(salaryForm.overtime30Pay) || 0,
       overtimePay: Number(salaryForm.overtimePay) || 0,
+
+      // 补贴拆解 (长夜班、全勤、自定义补贴)
+      nightShiftDays: Number(salaryForm.nightShiftDays) || 0,
+      nightShiftRate: Number(salaryForm.nightShiftRate) || 0,
+      nightShiftPay: Number(salaryForm.nightShiftPay) || 0,
+      fullAttendancePay: Number(salaryForm.fullAttendancePay) || 0,
+      baseAllowance: Number(salaryForm.baseAllowance) || 0,
+      customAllowances: salaryForm.customAllowances,
       allowance: Number(salaryForm.allowance) || 0,
+
       otherBonus: Number(salaryForm.otherBonus) || 0,
       preTaxDeduction: Number(salaryForm.preTaxDeduction) || 0,
       grossSalary: salaryCalc.grossSalary,
+
+      // 五险一金
+      isCustomInsurance: salaryForm.isCustomInsurance,
       pensionPersonal: salaryCalc.pensionPersonal,
       medicalPersonal: salaryCalc.medicalPersonal,
       unemploymentPersonal: salaryCalc.unemploymentPersonal,
       housingFundPersonal: salaryCalc.housingFundPersonal,
       totalPersonalInsurance: salaryCalc.totalPersonalInsurance,
+
+      // 其它扣除项
+      customDeductions: salaryForm.customDeductions,
+      otherDeductionsTotal,
+
       pensionCompany: salaryCalc.pensionCompany,
       medicalCompany: salaryCalc.medicalCompany,
       unemploymentCompany: salaryCalc.unemploymentCompany,
@@ -378,6 +824,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       maternityCompany: salaryCalc.maternityCompany,
       housingFundCompany: salaryCalc.housingFundCompany,
       totalCompanyInsurance: salaryCalc.totalCompanyInsurance,
+
       specialDeductions: Number(salaryForm.specialDeductions) || 0,
       taxThreshold: salaryCalc.taxThreshold,
       taxableIncome: salaryCalc.taxableIncome,
@@ -409,6 +856,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       multiplier: 1.5,
       settlementType: 'paid',
       hourlyRate: hourly || 103.45,
+      isNightShift: false,
+      nightShiftSubsidy: 50,
       reason: '',
       approver: '',
       notes: '',
@@ -427,6 +876,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       multiplier: o.multiplier,
       settlementType: o.settlementType,
       hourlyRate: o.hourlyRate || Number((defaultBaseSalary / 21.75 / 8).toFixed(2)),
+      isNightShift: Boolean(o.isNightShift),
+      nightShiftSubsidy: o.nightShiftSubsidy !== undefined ? o.nightShiftSubsidy : 50,
       reason: o.reason || '',
       approver: o.approver || '',
       notes: o.notes || '',
@@ -452,6 +903,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       settlementType: overtimeForm.settlementType,
       hourlyRate: rate,
       estimatedPay: estPay,
+      isNightShift: Boolean(overtimeForm.isNightShift),
+      nightShiftSubsidy: overtimeForm.isNightShift ? Number(overtimeForm.nightShiftSubsidy) || 0 : 0,
       compTimeHoursUsed: editingOvertimeId
         ? overtimes.find((o) => o.id === editingOvertimeId)?.compTimeHoursUsed || 0
         : 0,
@@ -672,9 +1125,10 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
 
                     {isExpanded && (
                       <div className="p-4 sm:p-5 pt-0 border-t border-zinc-100 dark:border-zinc-800 text-xs space-y-3.5 bg-zinc-50/50 dark:bg-zinc-800/20">
+                        {/* 基础汇总四宫格 */}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3">
                           <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
-                            <span className="text-[10px] text-zinc-400">基本工资</span>
+                            <span className="text-[10px] text-zinc-400">基本工资 (底薪)</span>
                             <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.baseSalary, hidePrivacy)}</div>
                           </div>
                           <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
@@ -682,21 +1136,121 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.performancePay, hidePrivacy)}</div>
                           </div>
                           <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
-                            <span className="text-[10px] text-zinc-400">加班费</span>
+                            <span className="text-[10px] text-zinc-400">加班费合计</span>
                             <div className="font-mono font-bold text-amber-600 dark:text-amber-400">{formatCurrency(s.overtimePay, hidePrivacy)}</div>
                           </div>
                           <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
-                            <span className="text-[10px] text-zinc-400">企业总用人成本</span>
-                            <div className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{formatCurrency(s.companyTotalCost, hidePrivacy)}</div>
+                            <span className="text-[10px] text-zinc-400">津补贴合计</span>
+                            <div className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{formatCurrency(s.allowance, hidePrivacy)}</div>
                           </div>
                         </div>
 
+                        {/* 加班费倍率拆解明细 */}
+                        {((s.overtime15Pay || 0) + (s.overtime20Pay || 0) + (s.overtime30Pay || 0) > 0 || (s.overtimePay || 0) > 0) && (
+                          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-amber-200/60 dark:border-zinc-800 space-y-2">
+                            <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
+                              <span className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                <span>加班费分项明细 (1.5倍 / 2倍 / 3倍)</span>
+                              </span>
+                              <span className="font-mono text-amber-600 dark:text-amber-400 font-bold">
+                                合计: {formatCurrency(s.overtimePay, hidePrivacy)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[11px]">
+                              <div className="p-2 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 text-zinc-700 dark:text-zinc-300">
+                                <span className="text-[10px] text-zinc-400 block">平日延时 (1.5倍)</span>
+                                <div className="font-bold text-amber-800 dark:text-amber-300">
+                                  {formatCurrency(s.overtime15Pay || 0, hidePrivacy)}
+                                  {s.overtime15Hours ? <span className="text-[10px] font-normal text-zinc-400 ml-1">({s.overtime15Hours}h)</span> : null}
+                                </div>
+                              </div>
+                              <div className="p-2 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 text-zinc-700 dark:text-zinc-300">
+                                <span className="text-[10px] text-zinc-400 block">周末加班 (2.0倍)</span>
+                                <div className="font-bold text-amber-800 dark:text-amber-300">
+                                  {formatCurrency(s.overtime20Pay || 0, hidePrivacy)}
+                                  {s.overtime20Hours ? <span className="text-[10px] font-normal text-zinc-400 ml-1">({s.overtime20Hours}h)</span> : null}
+                                </div>
+                              </div>
+                              <div className="p-2 rounded-lg bg-amber-50/50 dark:bg-amber-950/20 text-zinc-700 dark:text-zinc-300">
+                                <span className="text-[10px] text-zinc-400 block">法定节假日 (3.0倍)</span>
+                                <div className="font-bold text-amber-800 dark:text-amber-300">
+                                  {formatCurrency(s.overtime30Pay || 0, hidePrivacy)}
+                                  {s.overtime30Hours ? <span className="text-[10px] font-normal text-zinc-400 ml-1">({s.overtime30Hours}h)</span> : null}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 津补贴拆解明细 (长夜班、全勤、自定义补贴) */}
+                        {((s.nightShiftPay || 0) > 0 || (s.fullAttendancePay || 0) > 0 || (s.customAllowances && s.customAllowances.length > 0) || (s.allowance || 0) > 0) && (
+                          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200/60 dark:border-zinc-800 space-y-2">
+                            <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
+                              <span className="flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                                <span>津补贴构成 (长夜班 / 全勤 / 其它自定义补贴)</span>
+                              </span>
+                              <span className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">
+                                合计: {formatCurrency(s.allowance, hidePrivacy)}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-2 text-[11px] font-mono">
+                              {(s.nightShiftDays || 0) > 0 && (
+                                <div className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+                                  <span className="text-[10px] text-zinc-400 block">🌙 长夜班补贴</span>
+                                  <span className="font-bold text-indigo-700 dark:text-indigo-300">
+                                    {formatCurrency(s.nightShiftPay || 0, hidePrivacy)}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-400 ml-1">
+                                    ({s.nightShiftDays}天 × ¥{s.nightShiftRate || 0}/天)
+                                  </span>
+                                </div>
+                              )}
+                              {(s.fullAttendancePay || 0) > 0 && (
+                                <div className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+                                  <span className="text-[10px] text-zinc-400 block">🌟 全勤补贴</span>
+                                  <span className="font-bold text-indigo-700 dark:text-indigo-300">
+                                    {formatCurrency(s.fullAttendancePay || 0, hidePrivacy)}
+                                  </span>
+                                </div>
+                              )}
+                              {(s.baseAllowance || 0) > 0 && (
+                                <div className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40">
+                                  <span className="text-[10px] text-zinc-400 block">常规津贴(餐补/交通)</span>
+                                  <span className="font-bold text-zinc-700 dark:text-zinc-300">
+                                    {formatCurrency(s.baseAllowance || 0, hidePrivacy)}
+                                  </span>
+                                </div>
+                              )}
+                              {s.customAllowances?.map((item) => (
+                                <div
+                                  key={item.id}
+                                  className="p-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40"
+                                >
+                                  <span className="text-[10px] text-zinc-400 block">{item.name}</span>
+                                  <span className="font-bold text-indigo-700 dark:text-indigo-300">
+                                    {formatCurrency(item.amount, hidePrivacy)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
                         {/* 五险一金明细列表 */}
                         <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-2">
-                          <span className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
-                            <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
-                            <span>个人与企业五险一金明细</span>
-                          </span>
+                          <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
+                            <span className="flex items-center gap-1.5">
+                              <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
+                              <span>个人与企业五险一金明细</span>
+                            </span>
+                            {s.isCustomInsurance && (
+                              <span className="text-[10px] px-1.5 py-0.2 rounded font-bold bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300">
+                                自定义扣缴设置
+                              </span>
+                            )}
+                          </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px] text-zinc-600 dark:text-zinc-400">
                             <div>养老保险 (个人): ¥{s.pensionPersonal}</div>
                             <div>医疗保险 (个人): ¥{s.medicalPersonal}</div>
@@ -704,16 +1258,43 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             <div>住房公积金 (个人): ¥{s.housingFundPersonal}</div>
                             <div>养老 (企业): ¥{s.pensionCompany}</div>
                             <div>医疗 (企业): ¥{s.medicalCompany}</div>
-                            <div>工伤/生育: ¥{s.injuryCompany + s.maternityCompany}</div>
+                            <div>工伤/生育: ¥{(s.injuryCompany || 0) + (s.maternityCompany || 0)}</div>
                             <div>公积金 (企业): ¥{s.housingFundCompany}</div>
                           </div>
                         </div>
 
-                        {s.notes && (
-                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400">
-                            备注: {s.notes}
+                        {/* 其它自定义扣除项明细 */}
+                        {s.customDeductions && s.customDeductions.length > 0 && (
+                          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-rose-200/60 dark:border-zinc-800 space-y-2">
+                            <div className="flex items-center justify-between font-semibold text-zinc-900 dark:text-zinc-100">
+                              <span className="flex items-center gap-1.5">
+                                <Receipt className="w-3.5 h-3.5 text-rose-500" />
+                                <span>其它扣除项目明细</span>
+                              </span>
+                              <span className="font-mono text-rose-600 dark:text-rose-400 font-bold">
+                                合计: -{formatCurrency(s.otherDeductionsTotal || 0, hidePrivacy)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                              {s.customDeductions.map((d) => (
+                                <div key={d.id} className="p-1.5 rounded-lg bg-rose-50/50 dark:bg-rose-950/20">
+                                  <span className="text-[10px] text-zinc-400 block">{d.name}</span>
+                                  <span className="font-bold text-rose-600 dark:text-rose-400">
+                                    -{formatCurrency(d.amount, hidePrivacy)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
                           </div>
                         )}
+
+                        {/* 底部备注与税前扣除说明 */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-zinc-500 dark:text-zinc-400 pt-1 border-t border-zinc-200/60 dark:border-zinc-800">
+                          <div>企业总用人成本: <strong className="text-zinc-800 dark:text-zinc-200">{formatCurrency(s.companyTotalCost, hidePrivacy)}</strong></div>
+                          {s.specialDeductions > 0 && <div>专项附加扣除: ¥{s.specialDeductions}</div>}
+                          {s.preTaxDeduction > 0 && <div>税前缺勤扣除: -¥{s.preTaxDeduction}</div>}
+                          {s.notes && <div className="w-full text-zinc-400">备注: {s.notes}</div>}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -745,6 +1326,36 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
             </div>
           ) : (
             <>
+              {/* 加班工时与长夜班总体概览栏 */}
+              <div className="p-3 sm:p-3.5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+                <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    记录总数: <strong className="text-zinc-900 dark:text-zinc-100 font-semibold">{overtimes.length} 笔</strong>
+                  </span>
+                  <span className="text-zinc-300 dark:text-zinc-700">|</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    累计总工时: <strong className="text-amber-600 dark:text-amber-400 font-mono font-bold">{stats.totalOvertimeHours} 小时</strong>
+                  </span>
+                  <span className="text-zinc-300 dark:text-zinc-700">|</span>
+                  <span className="text-zinc-500 dark:text-zinc-400">
+                    预估加班费: <strong className="text-amber-600 dark:text-amber-400 font-mono font-bold">{formatCurrency(stats.totalPaidOvertimeAmount, hidePrivacy)}</strong>
+                  </span>
+                </div>
+                {stats.totalNightShiftDays > 0 ? (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/70 text-indigo-700 dark:text-indigo-300">
+                    <Moon className="w-3.5 h-3.5 text-indigo-500" />
+                    <span className="font-medium">
+                      长夜班: <strong className="font-mono">{stats.totalNightShiftDays}</strong> 天 · 累计补贴: <strong className="font-mono font-bold">¥{stats.totalNightShiftSubsidy}</strong>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-zinc-400 flex items-center gap-1">
+                    <Moon className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>支持记录长夜班并自动核算夜班津贴</span>
+                  </div>
+                )}
+              </div>
+
               {paginatedOvertimes.map((o) => {
                 const isExpanded = expandedOvertimeId === o.id;
 
@@ -768,6 +1379,12 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[10px]">
                               {o.type === 'workday' ? '工作日延时 (1.5x)' : o.type === 'weekend' ? '周末加班 (2.0x)' : '法定节假日 (3.0x)'}
                             </span>
+                            {o.isNightShift && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/60 dark:border-indigo-800/60 flex items-center gap-1">
+                                <Moon className="w-3 h-3 text-indigo-500" />
+                                <span>长夜班 (+¥{o.nightShiftSubsidy !== undefined ? o.nightShiftSubsidy : 50}补贴)</span>
+                              </span>
+                            )}
                             {o.settlementType === 'comp_time' && (
                               <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300 font-medium">
                                 调休结算
@@ -855,14 +1472,35 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          {o.approver && (
+                          {o.isNightShift ? (
+                            <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-between">
+                              <span className="text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5 font-medium">
+                                <Moon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                                <span>长夜班补贴标准</span>
+                              </span>
+                              <span className="font-bold text-indigo-700 dark:text-indigo-300 font-mono">
+                                +¥{Number(o.nightShiftSubsidy !== undefined ? o.nightShiftSubsidy : 50).toFixed(2)}/天
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                              <span className="text-zinc-400">长夜班状态</span>
+                              <span className="text-zinc-500 font-medium">常规日班/延时 (无夜班补贴)</span>
+                            </div>
+                          )}
+                          {o.approver ? (
                             <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
                               <span className="text-zinc-500 dark:text-zinc-400">审批负责人</span>
                               <span className="font-semibold text-zinc-800 dark:text-zinc-200">{o.approver}</span>
                             </div>
+                          ) : (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                              <span className="text-zinc-400">基准时薪</span>
+                              <span className="font-mono font-medium text-zinc-700 dark:text-zinc-300">¥{Number(o.hourlyRate || 0).toFixed(2)}/h</span>
+                            </div>
                           )}
                           {o.settlementType === 'comp_time' && (
-                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                            <div className="sm:col-span-2 p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
                               <span className="text-zinc-500 dark:text-zinc-400">调休消耗情况</span>
                               <span className="font-semibold text-purple-600 dark:text-purple-400">
                                 累计 {o.durationHours}h · 已用 {o.compTimeHoursUsed || 0}h · 剩余 {Math.max(0, o.durationHours - (o.compTimeHoursUsed || 0))}h
@@ -1096,111 +1734,696 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       {/* 录入 / 编辑薪资 Modal */}
       {isSalaryModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto pt-[max(1rem,env(safe-area-inset-top,0px))] pb-[max(1rem,env(safe-area-inset-bottom,0px))] animate-in fade-in duration-150">
-          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto flex flex-col">
+          <div className="w-full max-w-3xl bg-white dark:bg-zinc-900 rounded-3xl p-5 sm:p-6 shadow-2xl border border-zinc-200 dark:border-zinc-800 space-y-4 text-xs my-auto max-h-[calc(100vh-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px)-1.5rem)] overflow-y-auto flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 shrink-0">
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                <Banknote className="w-5 h-5 text-blue-500" />
-                <span>{editingSalaryId ? '编辑薪资记录' : '录入薪资工资条'}</span>
-              </h3>
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <Banknote className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
+                    {editingSalaryId ? '编辑薪资记录' : '录入薪资工资条'}
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">
+                    支持加班费倍率拆解、长夜班补贴、全勤奖、自定义补贴与扣除项自动计算
+                  </p>
+                </div>
+              </div>
               <button
                 onClick={() => setIsSalaryModalOpen(false)}
-                className="p-1 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 cursor-pointer"
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveSalarySubmit} className="space-y-3.5 flex-1">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">薪酬月份</label>
-                  <input
-                    type="month"
-                    required
-                    value={salaryForm.month}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, month: e.target.value })}
-                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
+            <form onSubmit={handleSaveSalarySubmit} className="space-y-4 flex-1">
+              {/* 1. 基础薪资信息 */}
+              <div className="p-3.5 rounded-2xl bg-zinc-50/70 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+                <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-blue-500" />
+                  <span>基本信息与固定薪资</span>
                 </div>
-                <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">公司/单位名称</label>
-                  <input
-                    type="text"
-                    value={salaryForm.companyName}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, companyName: e.target.value })}
-                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="min-w-0">
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">薪酬月份 *</label>
+                    <input
+                      type="month"
+                      required
+                      value={salaryForm.month}
+                      onChange={(e) => setSalaryForm({ ...salaryForm, month: e.target.value })}
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">公司/单位名称</label>
+                    <input
+                      type="text"
+                      value={salaryForm.companyName}
+                      onChange={(e) => setSalaryForm({ ...salaryForm, companyName: e.target.value })}
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">发放日期</label>
+                    <input
+                      type="date"
+                      value={salaryForm.payDate}
+                      onChange={(e) => setSalaryForm({ ...salaryForm, payDate: e.target.value })}
+                      className="w-full min-w-0 block px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-zinc-600 dark:text-zinc-400 font-medium">基本工资 (月薪基数) *</label>
+                      <span className="text-[10px] text-zinc-400 font-mono">
+                        折算时薪: ¥{(Number(salaryForm.baseSalary || 0) / 21.75 / 8).toFixed(2)}/h
+                      </span>
+                    </div>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-mono text-xs">¥</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        required
+                        value={salaryForm.baseSalary}
+                        onChange={(e) => setSalaryForm({ ...salaryForm, baseSalary: Number(e.target.value) })}
+                        className="w-full min-w-0 block pl-7 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="min-w-0">
+                    <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">绩效/岗位奖金</label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-mono text-xs">¥</span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={salaryForm.performancePay}
+                        onChange={(e) => setSalaryForm({ ...salaryForm, performancePay: Number(e.target.value) })}
+                        className="w-full min-w-0 block pl-7 pr-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
+              {/* 2. 加班工资分项核算 (1.5倍 / 2倍 / 3倍 与自动计算) */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/60 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                    <Clock className="w-4 h-4 text-amber-500" />
+                    <span>加班工资分项核算 (1.5倍 / 2倍 / 3倍)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleImportMonthOvertimes}
+                    className="text-[11px] px-2.5 py-1 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/60 font-medium transition-colors cursor-pointer flex items-center gap-1"
+                    title="根据本月已在系统中登记并选择折现结算的加班工时一键填入"
+                  >
+                    <span>⚡ 从本月已登记加班工时导入</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {/* 1.5倍 */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-amber-200/60 dark:border-zinc-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-800 dark:text-amber-300 text-[11px]">平日延时 (1.5倍)</span>
+                      <span className="text-[10px] text-zinc-400">1.5x</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">工时(小时)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={salaryForm.overtime15Hours || ''}
+                          placeholder="0"
+                          onChange={(e) => handleOvertimeHoursChange('15', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">加班工资(元)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={salaryForm.overtime15Pay || ''}
+                          placeholder="0.00"
+                          onChange={(e) => handleOvertimePayChange('15', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs font-bold text-amber-700 dark:text-amber-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 2.0倍 */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-amber-200/60 dark:border-zinc-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-800 dark:text-amber-300 text-[11px]">周末加班 (2.0倍)</span>
+                      <span className="text-[10px] text-zinc-400">2.0x</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">工时(小时)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={salaryForm.overtime20Hours || ''}
+                          placeholder="0"
+                          onChange={(e) => handleOvertimeHoursChange('20', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">加班工资(元)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={salaryForm.overtime20Pay || ''}
+                          placeholder="0.00"
+                          onChange={(e) => handleOvertimePayChange('20', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs font-bold text-amber-700 dark:text-amber-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3.0倍 */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-amber-200/60 dark:border-zinc-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-800 dark:text-amber-300 text-[11px]">法定节假日 (3.0倍)</span>
+                      <span className="text-[10px] text-zinc-400">3.0x</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">工时(小时)</label>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0"
+                          value={salaryForm.overtime30Hours || ''}
+                          placeholder="0"
+                          onChange={(e) => handleOvertimeHoursChange('30', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">加班工资(元)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          value={salaryForm.overtime30Pay || ''}
+                          placeholder="0.00"
+                          onChange={(e) => handleOvertimePayChange('30', Number(e.target.value))}
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs font-bold text-amber-700 dark:text-amber-400"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 加班费合计栏 */}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-amber-100/60 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 font-mono text-[11px]">
+                  <span>
+                    1.5倍(¥{salaryForm.overtime15Pay || 0}) + 2.0倍(¥{salaryForm.overtime20Pay || 0}) + 3.0倍(¥{salaryForm.overtime30Pay || 0})
+                  </span>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span>加班费合计:</span>
+                    <span className="text-sm font-extrabold text-amber-700 dark:text-amber-400">
+                      ¥{Number(salaryForm.overtimePay || 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. 津补贴明细 (长夜班天数/补贴、全勤奖、其它自定义补贴) */}
+              <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-900/60 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-indigo-500" />
+                    <span>津补贴明细 (长夜班 / 全勤 / 自定义补贴)</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleAddCustomAllowance('岗位津贴', 300)}
+                    className="text-[11px] px-2.5 py-1 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-800 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900/60 font-medium transition-colors cursor-pointer flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>添加自定义补贴</span>
+                  </button>
+                </div>
+
+                {/* 长夜班天数、单价与补贴小计 */}
+                <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200/60 dark:border-zinc-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-900 dark:text-indigo-300 text-[11px] flex items-center gap-1">
+                      <Moon className="w-3.5 h-3.5 text-indigo-500" />
+                      <span>长夜班补贴核算</span>
+                    </span>
+                    <span className="text-[10px] text-zinc-400">自动联动计算: 天数 × 补贴单价</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] text-zinc-500 dark:text-zinc-400 mb-0.5">长夜班天数 (天)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={salaryForm.nightShiftDays || ''}
+                        placeholder="如: 8"
+                        onChange={(e) =>
+                          handleNightShiftChange(Number(e.target.value), Number(salaryForm.nightShiftRate || 0))
+                        }
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-zinc-500 dark:text-zinc-400 mb-0.5">每日补贴标准 (元/天)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="5"
+                        value={salaryForm.nightShiftRate || ''}
+                        placeholder="如: 50"
+                        onChange={(e) =>
+                          handleNightShiftChange(Number(salaryForm.nightShiftDays || 0), Number(e.target.value))
+                        }
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] text-zinc-500 dark:text-zinc-400 mb-0.5">长夜班补贴金额 (元)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={salaryForm.nightShiftPay || ''}
+                        placeholder="0.00"
+                        onChange={(e) => handleNightShiftPayDirectChange(Number(e.target.value))}
+                        className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-indigo-700 dark:text-indigo-400 font-mono text-xs font-bold"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 全勤补贴与常规基础津贴 */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200/60 dark:border-zinc-800">
+                    <label className="block text-[11px] font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                      全勤补贴 (元)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="10"
+                      value={salaryForm.fullAttendancePay || ''}
+                      placeholder="如: 200 / 300"
+                      onChange={(e) => handleFullAttendanceChange(Number(e.target.value))}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs font-semibold"
+                    />
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200/60 dark:border-zinc-800">
+                    <label className="block text-[11px] font-bold text-zinc-700 dark:text-zinc-300 mb-1">
+                      常规基础津贴 (餐补/交通等)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="10"
+                      value={salaryForm.baseAllowance || ''}
+                      placeholder="如: 500"
+                      onChange={(e) => handleBaseAllowanceChange(Number(e.target.value))}
+                      className="w-full px-2.5 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* 其它自定义补贴列表 */}
+                {salaryForm.customAllowances.length > 0 && (
+                  <div className="space-y-2 pt-1">
+                    <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">其它自定义补贴项目:</div>
+                    <div className="space-y-1.5">
+                      {salaryForm.customAllowances.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800"
+                        >
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) =>
+                              handleUpdateCustomAllowance(item.id, e.target.value, Number(item.amount) || 0)
+                            }
+                            placeholder="补贴名称 (如: 高温补贴)"
+                            className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-xs"
+                          />
+                          <div className="relative w-28 shrink-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400 text-xs font-mono">¥</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={item.amount || ''}
+                              onChange={(e) =>
+                                handleUpdateCustomAllowance(item.id, item.name, Number(e.target.value))
+                              }
+                              placeholder="0.00"
+                              className="w-full pl-5 pr-2 py-1 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs font-bold"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCustomAllowance(item.id)}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 快捷添加常见预设补贴 */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-400 pt-0.5">
+                  <span>常用补贴预设:</span>
+                  {['高温补贴', '住房补贴', '通讯补贴', '外派津贴'].map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handleAddCustomAllowance(preset, 200)}
+                      className="px-2 py-0.5 rounded-md bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:border-indigo-400 text-zinc-600 dark:text-zinc-300 cursor-pointer"
+                    >
+                      + {preset}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 津补贴合计栏 */}
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-indigo-100/60 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 font-mono text-[11px]">
+                  <span>
+                    夜班(¥{salaryForm.nightShiftPay || 0}) + 全勤(¥{salaryForm.fullAttendancePay || 0}) + 基础(¥{salaryForm.baseAllowance || 0}) + 自定义(¥{customAllowancesTotal})
+                  </span>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span>津补贴合计:</span>
+                    <span className="text-sm font-extrabold text-indigo-700 dark:text-indigo-400">
+                      ¥{Number(salaryForm.allowance || 0).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. 五险一金扣除设置与其它自定义扣除项 */}
+              <div className="p-3.5 rounded-2xl bg-zinc-50/80 dark:bg-zinc-800/40 border border-zinc-200/80 dark:border-zinc-800 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                    <span>五险一金扣除与其它扣除项 (自动计算)</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-1.5 text-[11px] text-zinc-600 dark:text-zinc-400 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={salaryForm.isCustomInsurance}
+                        onChange={(e) => handleToggleCustomInsurance(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
+                      <span>自定义微调五险一金</span>
+                    </label>
+
+                    {salaryForm.isCustomInsurance && (
+                      <button
+                        type="button"
+                        onClick={handleResetStandardInsurance}
+                        className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                      >
+                        ⚡ 恢复标准费率测算
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* 五险一金个人承担明细 */}
+                {salaryForm.isCustomInsurance ? (
+                  <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800 space-y-2">
+                    <div className="text-[11px] text-zinc-500 font-medium">个人承担五险一金 (允许自由修改扣款金额):</div>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">养老保险 (个人)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={salaryForm.customPersonalPension}
+                          onChange={(e) =>
+                            setSalaryForm({ ...salaryForm, customPersonalPension: Number(e.target.value) })
+                          }
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">医疗保险 (个人)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={salaryForm.customPersonalMedical}
+                          onChange={(e) =>
+                            setSalaryForm({ ...salaryForm, customPersonalMedical: Number(e.target.value) })
+                          }
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">失业保险 (个人)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={salaryForm.customPersonalUnemployment}
+                          onChange={(e) =>
+                            setSalaryForm({ ...salaryForm, customPersonalUnemployment: Number(e.target.value) })
+                          }
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-zinc-400 mb-0.5">住房公积金 (个人)</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={salaryForm.customPersonalHousingFund}
+                          onChange={(e) =>
+                            setSalaryForm({ ...salaryForm, customPersonalHousingFund: Number(e.target.value) })
+                          }
+                          className="w-full px-2 py-1.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono text-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono text-[11px]">
+                    <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                      <span className="text-[10px] text-zinc-400 block">养老 (8%)</span>
+                      <span className="font-bold text-zinc-700 dark:text-zinc-300">¥{salaryCalc.pensionPersonal}</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                      <span className="text-[10px] text-zinc-400 block">医疗 (2%+3)</span>
+                      <span className="font-bold text-zinc-700 dark:text-zinc-300">¥{salaryCalc.medicalPersonal}</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                      <span className="text-[10px] text-zinc-400 block">失业 (0.5%)</span>
+                      <span className="font-bold text-zinc-700 dark:text-zinc-300">¥{salaryCalc.unemploymentPersonal}</span>
+                    </div>
+                    <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                      <span className="text-[10px] text-zinc-400 block">公积金 (12%)</span>
+                      <span className="font-bold text-zinc-700 dark:text-zinc-300">¥{salaryCalc.housingFundPersonal}</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 其它可自定义扣除项 */}
+                <div className="space-y-2 pt-1 border-t border-zinc-200/60 dark:border-zinc-800">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                      其它扣除项 (企业年金 / 工会会费 / 水电房租 / 考勤扣款等)
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleAddCustomDeduction('工会会费', 50)}
+                      className="text-[11px] px-2 py-0.5 rounded-lg bg-zinc-200/80 dark:bg-zinc-700/80 text-zinc-800 dark:text-zinc-200 hover:bg-zinc-300 font-medium transition-colors cursor-pointer flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>添加扣除项</span>
+                    </button>
+                  </div>
+
+                  {salaryForm.customDeductions.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {salaryForm.customDeductions.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800"
+                        >
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) =>
+                              handleUpdateCustomDeduction(item.id, e.target.value, Number(item.amount) || 0)
+                            }
+                            placeholder="扣除项名称 (如: 工会会费 / 水电费)"
+                            className="flex-1 min-w-0 px-2 py-1 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-xs"
+                          />
+                          <div className="relative w-28 shrink-0">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-rose-400 text-xs font-mono">-¥</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="5"
+                              value={item.amount || ''}
+                              onChange={(e) =>
+                                handleUpdateCustomDeduction(item.id, item.name, Number(e.target.value))
+                              }
+                              placeholder="0.00"
+                              className="w-full pl-6 pr-2 py-1 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-rose-600 dark:text-rose-400 font-mono text-xs font-bold"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCustomDeduction(item.id)}
+                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[10px] text-zinc-400">暂无其它扣除项，如有企业年金、工会费或水电费扣款可点击右侧添加</div>
+                  )}
+
+                  {/* 快捷扣除项标签 */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-zinc-400">
+                    <span>常见扣除预设:</span>
+                    {['工会会费', '企业年金', '水电住宿费', '迟到缺勤扣款'].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => handleAddCustomDeduction(preset, preset.includes('会费') ? 50 : 100)}
+                        className="px-2 py-0.5 rounded-md bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:border-zinc-400 text-zinc-600 dark:text-zinc-300 cursor-pointer"
+                      >
+                        + {preset}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* 扣除汇总卡片 */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 font-mono text-[11px]">
+                    <span>
+                      个人五险一金(-¥{salaryCalc.totalPersonalInsurance}) + 其它扣除(-¥{otherDeductionsTotal})
+                    </span>
+                    <div className="flex items-center gap-1.5 font-bold">
+                      <span>个人扣除总计:</span>
+                      <span className="text-sm font-extrabold text-rose-600 dark:text-rose-400">
+                        -¥{(salaryCalc.totalPersonalInsurance + otherDeductionsTotal).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. 专项附加扣除与其他税前扣除 */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">基本工资</label>
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                    专项附加扣除 (赡养/子女/房贷)
+                  </label>
                   <input
                     type="number"
-                    value={salaryForm.baseSalary}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, baseSalary: Number(e.target.value) })}
-                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">绩效/奖金</label>
-                  <input
-                    type="number"
-                    value={salaryForm.performancePay}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, performancePay: Number(e.target.value) })}
-                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">加班费</label>
-                  <input
-                    type="number"
-                    value={salaryForm.overtimePay}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, overtimePay: Number(e.target.value) })}
-                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">津补贴</label>
-                  <input
-                    type="number"
-                    value={salaryForm.allowance}
-                    onChange={(e) => setSalaryForm({ ...salaryForm, allowance: Number(e.target.value) })}
-                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
-                  />
-                </div>
-                <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">专项附加扣除 (赡养/子女/住房)</label>
-                  <input
-                    type="number"
+                    min="0"
+                    step="500"
                     value={salaryForm.specialDeductions}
                     onChange={(e) => setSalaryForm({ ...salaryForm, specialDeductions: Number(e.target.value) })}
                     className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
                   />
                 </div>
+                <div className="min-w-0">
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                    税前缺勤扣除 (事假/病假)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    value={salaryForm.preTaxDeduction}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, preTaxDeduction: Number(e.target.value) })}
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">其他奖金/提成</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="10"
+                    value={salaryForm.otherBonus}
+                    onChange={(e) => setSalaryForm({ ...salaryForm, otherBonus: Number(e.target.value) })}
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
+                  />
+                </div>
               </div>
 
-              {/* 实时税费计算结果预览 */}
-              <div className="p-3.5 rounded-2xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200/80 dark:border-zinc-700/80 space-y-1.5 font-mono text-[11px]">
-                <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
-                  <span>应发合计 (税前):</span>
-                  <span>¥{salaryCalc.grossSalary}</span>
+              {/* 6. 实时税费与实发核算看板 */}
+              <div className="p-4 rounded-2xl bg-zinc-900 text-white dark:bg-zinc-950 dark:border dark:border-zinc-800 space-y-3 font-mono">
+                <div className="flex items-center justify-between text-xs border-b border-zinc-800 pb-2">
+                  <span className="font-semibold text-zinc-300 flex items-center gap-1.5">
+                    <Calculator className="w-4 h-4 text-emerald-400" />
+                    <span>薪资实时联动测算结果</span>
+                  </span>
+                  <span className="text-[10px] text-zinc-400">起征点 ¥5000 / 月度预扣税率</span>
                 </div>
-                <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
-                  <span>个人五险一金代扣:</span>
-                  <span>-¥{salaryCalc.totalPersonalInsurance}</span>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+                  <div>
+                    <span className="text-zinc-400 block text-[10px]">应发合计 (税前)</span>
+                    <span className="font-bold text-sm text-zinc-100">¥{salaryCalc.grossSalary}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 block text-[10px]">个人五险一金</span>
+                    <span className="font-bold text-sm text-rose-400">-¥{salaryCalc.totalPersonalInsurance}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 block text-[10px]">其它扣除项</span>
+                    <span className="font-bold text-sm text-rose-400">-¥{otherDeductionsTotal}</span>
+                  </div>
+                  <div>
+                    <span className="text-zinc-400 block text-[10px]">代扣个人所得税</span>
+                    <span className="font-bold text-sm text-amber-400">-¥{salaryCalc.individualIncomeTax}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between text-zinc-600 dark:text-zinc-400">
-                  <span>个人所得税:</span>
-                  <span>-¥{salaryCalc.individualIncomeTax}</span>
-                </div>
-                <div className="flex justify-between font-bold text-emerald-600 dark:text-emerald-400 text-xs pt-1 border-t border-zinc-200 dark:border-zinc-700">
-                  <span>预计税后实发到手:</span>
-                  <span>¥{salaryCalc.netSalary}</span>
+
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-zinc-800/80">
+                  <div>
+                    <span className="text-zinc-400 text-[10px] block">预计税后实发金额 (到手工资)</span>
+                    <span className="text-xl sm:text-2xl font-black text-emerald-400 tracking-tight">
+                      ¥{salaryCalc.netSalary.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="text-left sm:text-right text-[11px] text-zinc-400">
+                    <div>企业用工总成本: <strong className="text-zinc-200">¥{salaryCalc.companyTotalCost}</strong></div>
+                    <div className="text-[10px] text-zinc-500">包含企业五险一金 ¥{salaryCalc.totalCompanyInsurance}</div>
+                  </div>
                 </div>
               </div>
 
@@ -1208,7 +2431,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                 <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">备注说明</label>
                 <input
                   type="text"
-                  placeholder="如: Q3 季度评优奖金 / 补发津贴..."
+                  placeholder="如: Q3 季度评优奖金 / 补发津贴 / 特殊考勤说明..."
                   value={salaryForm.notes}
                   onChange={(e) => setSalaryForm({ ...salaryForm, notes: e.target.value })}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
@@ -1225,7 +2448,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-semibold cursor-pointer"
+                  className="px-5 py-2 rounded-xl bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 text-white dark:text-zinc-900 font-semibold cursor-pointer shadow-sm"
                 >
                   保存薪资记录
                 </button>
@@ -1333,7 +2556,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">常用班次快捷填入:</span>
                     <span className="text-[10px] text-zinc-400">点击自动设置时间、工时与倍率</span>
                   </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                     {OVERTIME_SHIFT_PRESETS.map((preset) => (
                       <button
                         key={preset.label}
@@ -1346,12 +2569,25 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             durationHours: preset.hours,
                             type: preset.type,
                             multiplier: preset.multiplier,
+                            isNightShift: Boolean(preset.isNightShift),
+                            nightShiftSubsidy: preset.isNightShift
+                              ? (overtimeForm.nightShiftSubsidy || 50)
+                              : overtimeForm.nightShiftSubsidy,
                           });
                         }}
-                        className="text-[11px] p-1.5 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700/80 hover:bg-amber-50 hover:border-amber-300 dark:hover:bg-amber-950/40 dark:hover:border-amber-800 transition-colors cursor-pointer text-left flex flex-col justify-between"
+                        className={`text-[11px] p-2 rounded-xl transition-all cursor-pointer text-left flex flex-col justify-between ${
+                          preset.isNightShift
+                            ? 'bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 border border-indigo-200 dark:border-indigo-800 hover:border-indigo-400'
+                            : 'bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700/80 hover:bg-amber-50 hover:border-amber-300 dark:hover:bg-amber-950/40 dark:hover:border-amber-800'
+                        }`}
                       >
-                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">{preset.label}</span>
-                        <span className="text-[10px] text-zinc-400 font-mono mt-0.5">{preset.span} ({preset.hours}h)</span>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold text-zinc-900 dark:text-zinc-100">{preset.label}</span>
+                          {preset.isNightShift && (
+                            <Moon className="w-3 h-3 text-indigo-500" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono mt-0.5">{preset.span} ({preset.hours}h)</span>
                       </button>
                     ))}
                   </div>
@@ -1514,6 +2750,72 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* 是否是长夜班及长夜班补贴设置 */}
+              <div
+                className={`p-3 sm:p-3.5 rounded-2xl border transition-all ${
+                  overtimeForm.isNightShift
+                    ? 'bg-indigo-50/80 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800/80 shadow-xs'
+                    : 'bg-zinc-50 dark:bg-zinc-800/50 border-zinc-200 dark:border-zinc-700/80'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={overtimeForm.isNightShift}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setOvertimeForm({
+                          ...overtimeForm,
+                          isNightShift: checked,
+                          nightShiftSubsidy: checked ? (overtimeForm.nightShiftSubsidy || 50) : 0,
+                        });
+                      }}
+                      className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <div className="flex items-center gap-1.5 font-medium text-zinc-900 dark:text-zinc-100 text-xs">
+                      <Moon className={`w-4 h-4 ${overtimeForm.isNightShift ? 'text-indigo-600 dark:text-indigo-400' : 'text-zinc-400'}`} />
+                      <span>是否是长夜班（长夜班有补贴）</span>
+                    </div>
+                  </label>
+                  {overtimeForm.isNightShift && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                      已启用长夜班补贴
+                    </span>
+                  )}
+                </div>
+
+                {overtimeForm.isNightShift && (
+                  <div className="mt-3 pt-3 border-t border-indigo-100 dark:border-indigo-900/50 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+                    <div>
+                      <label className="block text-[11px] text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                        长夜班单日补贴 (元/天)
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-mono text-xs">¥</span>
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={overtimeForm.nightShiftSubsidy}
+                          onChange={(e) =>
+                            setOvertimeForm({
+                              ...overtimeForm,
+                              nightShiftSubsidy: Number(e.target.value),
+                            })
+                          }
+                          className="w-full pl-7 pr-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-indigo-200 dark:border-indigo-800 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-xs"
+                          placeholder="50"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-indigo-700 dark:text-indigo-300 bg-white/70 dark:bg-zinc-900/70 p-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
+                      💡 此班次计入长夜班天数，在工资条中可<strong>一键导入当月长夜班天数与总补贴</strong>（当前单班补贴: +¥{Number(overtimeForm.nightShiftSubsidy) || 0}）。
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
