@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDownRight,
   ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
   Download,
   Edit2,
   Gift,
@@ -36,6 +38,7 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedGiftId, setExpandedGiftId] = useState<string | null>(null);
 
   // 筛选与搜索状态
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -352,73 +355,158 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
           </div>
         ) : (
           <>
-            {paginatedGifts.map((g) => (
-              <div
-                key={g.id}
-                className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
-              >
-                <div className="flex items-start gap-3.5">
+            {paginatedGifts.map((g) => {
+              const isExpanded = expandedGiftId === g.id;
+
+              return (
+                <div
+                  key={g.id}
+                  className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
+                >
+                  {/* 概要行 (点击展开/折叠明细) */}
                   <div
-                    className="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 flex items-center justify-center shrink-0 font-bold border border-zinc-200/60 dark:border-zinc-700/60"
+                    onClick={() => setExpandedGiftId(isExpanded ? null : g.id)}
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs cursor-pointer hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors"
                   >
-                    {g.direction === 'out' ? '支' : '收'}
+                    <div className="flex items-start gap-3.5">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold border ${
+                          g.direction === 'out'
+                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border-rose-200/60 dark:border-rose-800/60'
+                            : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border-emerald-200/60 dark:border-emerald-800/60'
+                        }`}
+                      >
+                        {g.direction === 'out' ? '支' : '收'}
+                      </div>
+
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-zinc-900 dark:text-zinc-100 text-sm">{g.personName}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
+                            {relationLabels[g.relation]}
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
+                            {eventLabels[g.eventType]}
+                          </span>
+                          {g.direction === 'in' && g.returnStatus === 'pending' && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/60 font-medium">
+                              待回礼
+                            </span>
+                          )}
+                          {g.direction === 'in' && g.returnStatus === 'returned' && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/60 font-medium">
+                              已回礼
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
+                          <span className="font-mono">{g.date}</span>
+                          {g.location && <span>· {g.location}</span>}
+                          {g.notes && !isExpanded && <span className="text-zinc-600 dark:text-zinc-400 truncate max-w-[200px] sm:max-w-xs">· {g.notes}</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-zinc-100 dark:border-zinc-800">
+                      <div className="text-right">
+                        <span className="text-[10px] text-zinc-400 block">{g.direction === 'out' ? '送出礼金' : '收到礼金'}</span>
+                        <span
+                          className={`font-mono font-bold text-sm sm:text-base ${
+                            g.direction === 'out'
+                              ? 'text-zinc-900 dark:text-zinc-100'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          {g.direction === 'out' ? '-' : '+'}{formatCurrency(g.amount, hidePrivacy)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEdit(g);
+                          }}
+                          className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
+                          title="编辑"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm('确定删除该笔随礼记录吗？')) {
+                              onDeleteGift(g.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer"
+                          title="删除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-zinc-900 dark:text-zinc-100">{g.personName}</span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
-                        {relationLabels[g.relation]}
-                      </span>
-                      <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
-                        {eventLabels[g.eventType]}
-                      </span>
-                      {g.direction === 'in' && g.returnStatus === 'pending' && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/60 font-medium">
-                          待回礼
-                        </span>
+                  {/* 展开的完整明细面板 */}
+                  {isExpanded && (
+                    <div className="p-4 pt-0 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/20 text-xs space-y-3 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">往来日期</span>
+                          <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{g.date}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">人际关系</span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-200">{relationLabels[g.relation]}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">人情事由</span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-200">{eventLabels[g.eventType]}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">往来方向</span>
+                          <span className={`font-bold ${g.direction === 'out' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                            {g.direction === 'out' ? '送出礼金 (随礼)' : '收到礼金 (入账)'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {g.location && (
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                          <span className="text-zinc-500 dark:text-zinc-400">举办地点/宴请酒店</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200">{g.location}</span>
+                        </div>
+                      )}
+
+                      {g.direction === 'in' && (
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                          <span className="text-zinc-500 dark:text-zinc-400">回礼状态</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                            {g.returnStatus === 'pending'
+                              ? '待回礼 (暂未还礼)'
+                              : g.returnStatus === 'returned'
+                              ? `已回礼 (${g.returnAmount ? formatCurrency(g.returnAmount, hidePrivacy) : '已结清'})`
+                              : '无需回礼'}
+                          </span>
+                        </div>
+                      )}
+
+                      {g.notes && (
+                        <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">往来备注</span>
+                          <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">{g.notes}</p>
+                        </div>
                       )}
                     </div>
-
-                    <div className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
-                      <span>{g.date}</span>
-                      {g.location && <span>· {g.location}</span>}
-                      {g.notes && <span>· 备注: {g.notes}</span>}
-                    </div>
-                  </div>
+                  )}
                 </div>
-
-                <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-zinc-100 dark:border-zinc-800">
-                  <div className="text-right">
-                    <span className="text-[10px] text-zinc-400 block">{g.direction === 'out' ? '送出金额' : '收到礼金'}</span>
-                    <span className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-                      {g.direction === 'out' ? '-' : '+'}{formatCurrency(g.amount, hidePrivacy)}
-                    </span>
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => handleOpenEdit(g)}
-                      className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer"
-                      title="编辑"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (window.confirm('确定删除该笔随礼记录吗？')) {
-                          onDeleteGift(g.id);
-                        }
-                      }}
-                      className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer"
-                      title="删除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
 
             <Pagination
               currentPage={currentPage}

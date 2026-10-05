@@ -3,6 +3,8 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Calendar,
+  ChevronDown,
+  ChevronUp,
   CreditCard,
   Download,
   Edit2,
@@ -14,7 +16,9 @@ import {
   Receipt,
   Search,
   ShoppingBag,
+  Tag,
   Trash2,
+  User,
   Wallet,
   X,
 } from 'lucide-react';
@@ -118,6 +122,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null);
 
   // Filters
   const [selectedType, setSelectedType] = useState<'all' | ExpenseType>('all');
@@ -777,7 +782,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
           <span>
             {categoryStats.totalFilteredIncome > 0 ? (
               <span>
-                支出合计: {hidePrivacy ? '••••' : `¥${formatCurrency(categoryStats.totalFilteredExpense)}`} · 收礼入账: {hidePrivacy ? '••••' : `+¥${formatCurrency(categoryStats.totalFilteredIncome)}`}
+                支出合计: {hidePrivacy ? '••••' : formatCurrency(categoryStats.totalFilteredExpense)} · 收礼入账: {hidePrivacy ? '••••' : `+${formatCurrency(categoryStats.totalFilteredIncome)}`}
               </span>
             ) : (
               <span>当前列表合计: {hidePrivacy ? '••••••' : formatCurrency(categoryStats.totalFiltered)}</span>
@@ -801,102 +806,161 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
             {paginatedExpenses.map((row) => {
               const meta = getTypeMeta(row.type);
               const RowIcon = meta.icon;
+              const isExpanded = expandedExpenseId === row.id;
 
               return (
                 <div
                   key={row.id}
-                  className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors"
+                  className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
                 >
-                  {/* 左侧：分类图标方块、细分类别、性质徽章、对象标签、明细备注 */}
-                  <div className="flex items-start gap-3.5">
-                    <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold ${meta.boxClass}`}
-                    >
-                      <RowIcon className="w-5 h-5" />
-                    </div>
+                  {/* 概要行 (点击展开/折叠明细) */}
+                  <div
+                    onClick={() => setExpandedExpenseId(isExpanded ? null : row.id)}
+                    className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs cursor-pointer hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors"
+                  >
+                    {/* 左侧概要：分类图标方块、细分类别、性质徽章、对象标签、简要日期 */}
+                    <div className="flex items-start gap-3.5">
+                      <div
+                        className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold ${meta.boxClass}`}
+                      >
+                        <RowIcon className="w-5 h-5" />
+                      </div>
 
-                    <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-zinc-900 dark:text-zinc-100 text-sm">
-                          {row.category}
-                        </span>
-                        {row.type === 'gift' ? (
-                          row.direction === 'in' ? (
-                            <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 flex items-center gap-0.5">
-                              <ArrowDownRight className="w-3 h-3 text-emerald-500" />
-                              <span>收礼入账</span>
-                            </span>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-zinc-900 dark:text-zinc-100 text-sm">
+                            {row.category}
+                          </span>
+                          {row.type === 'gift' ? (
+                            row.direction === 'in' ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/60 flex items-center gap-0.5">
+                                <ArrowDownRight className="w-3 h-3 text-emerald-500" />
+                                <span>收礼入账</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60 flex items-center gap-0.5">
+                                <ArrowUpRight className="w-3 h-3 text-rose-500" />
+                                <span>随礼支出</span>
+                              </span>
+                            )
                           ) : (
-                            <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200/60 dark:border-rose-800/60 flex items-center gap-0.5">
-                              <ArrowUpRight className="w-3 h-3 text-rose-500" />
-                              <span>随礼支出</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${meta.badgeClass}`}>
+                              {meta.label}
                             </span>
-                          )
-                        ) : (
-                          <span className={`text-[10px] px-2 py-0.5 rounded-md font-medium ${meta.badgeClass}`}>
-                            {meta.label}
-                          </span>
-                        )}
-                        {row.beneficiary && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
-                            {row.type === 'gift' && (row.direction === 'in' ? '来自: ' : '随给: ')}
-                            {row.beneficiary}
-                          </span>
-                        )}
+                          )}
+                          {row.beneficiary && (
+                            <span className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-medium">
+                              {row.type === 'gift' && (row.direction === 'in' ? '来自: ' : '随给: ')}
+                              {row.beneficiary}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
+                          <span className="font-mono">{row.date}</span>
+                          <span>·</span>
+                          <span>{row.paymentMethod || '微信支付'}</span>
+                          {row.payer && <span>({row.type === 'gift' && row.direction === 'in' ? '入账: ' : ''}{row.payer})</span>}
+                          {row.remarks && !isExpanded && (
+                            <span className="text-zinc-600 dark:text-zinc-400 truncate max-w-[200px] sm:max-w-xs">
+                              · {row.remarks}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 右侧概要：支出/收入金额、操作按钮与展开折叠图标 */}
+                    <div className="flex items-center justify-between sm:justify-end gap-3 border-t sm:border-t-0 pt-2 sm:pt-0 border-zinc-100 dark:border-zinc-800">
+                      <div className="text-right">
+                        <span className="text-[10px] text-zinc-400 block">
+                          {row.type === 'gift' && row.direction === 'in' ? '收礼金额' : '支出金额'}
+                        </span>
+                        <span
+                          className={`font-mono font-bold text-sm sm:text-base ${
+                            row.type === 'gift' && row.direction === 'in'
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-zinc-900 dark:text-zinc-100'
+                          }`}
+                        >
+                          {hidePrivacy
+                            ? '••••'
+                            : `${row.type === 'gift' && row.direction === 'in' ? '+' : '-'}${formatCurrency(
+                                row.amount
+                              )}`}
+                        </span>
                       </div>
 
-                      <div className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-1 flex flex-wrap items-center gap-2">
-                        <span className="font-mono">{row.date}</span>
-                        <span>·</span>
-                        <span>{row.paymentMethod || '微信支付'}</span>
-                        {row.payer && <span>({row.type === 'gift' && row.direction === 'in' ? '入账: ' : ''}{row.payer})</span>}
-                        {row.remarks && <span className="text-zinc-600 dark:text-zinc-400">· {row.remarks}</span>}
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenEdit(row);
+                          }}
+                          className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer transition-colors"
+                          title="编辑"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`确定要删除这笔「${row.category} ¥${row.amount}」开销记录吗？`)) {
+                              onDeleteExpense(row.id);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer transition-colors"
+                          title="删除"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                        <div className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
+                          {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* 右侧：支出/收入金额与操作按键 */}
-                  <div className="flex items-center justify-between sm:justify-end gap-4 border-t sm:border-t-0 pt-2 sm:pt-0 border-zinc-100 dark:border-zinc-800">
-                    <div className="text-right">
-                      <span className="text-[10px] text-zinc-400 block">
-                        {row.type === 'gift' && row.direction === 'in' ? '收礼金额' : '支出金额'}
-                      </span>
-                      <span
-                        className={`font-mono font-bold text-sm sm:text-base ${
-                          row.type === 'gift' && row.direction === 'in'
-                            ? 'text-emerald-600 dark:text-emerald-400'
-                            : 'text-zinc-900 dark:text-zinc-100'
-                        }`}
-                      >
-                        {hidePrivacy
-                          ? '••••'
-                          : `${row.type === 'gift' && row.direction === 'in' ? '+' : '-'}¥${formatCurrency(
-                              row.amount
-                            )}`}
-                      </span>
-                    </div>
+                  {/* 展开的完整明细面板 */}
+                  {isExpanded && (
+                    <div className="p-4 pt-0 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/20 text-xs space-y-3 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">消费日期</span>
+                          <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{row.date}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">开销分类</span>
+                          <span className="font-bold text-zinc-800 dark:text-zinc-200">{meta.label} · {row.category}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">支付方式</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200">{row.paymentMethod || '微信支付'}</span>
+                        </div>
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                          <span className="text-[10px] text-zinc-400 block">支付/经手人</span>
+                          <span className="font-medium text-zinc-800 dark:text-zinc-200">{row.payer || '本人'}</span>
+                        </div>
+                      </div>
 
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEdit(row)}
-                        className="p-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 cursor-pointer transition-colors"
-                        title="编辑"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`确定要删除这笔「${row.category} ¥${row.amount}」开销记录吗？`)) {
-                            onDeleteExpense(row.id);
-                          }
-                        }}
-                        className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer transition-colors"
-                        title="删除"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {row.beneficiary && (
+                        <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                          <span className="text-zinc-500 dark:text-zinc-400">
+                            {row.type === 'gift' && (row.direction === 'in' ? '礼金赠送人 (来自)' : '受礼对象 (随给)')}
+                            {row.type !== 'gift' && '开销归属/受益人'}
+                          </span>
+                          <span className="font-semibold text-zinc-800 dark:text-zinc-200">{row.beneficiary}</span>
+                        </div>
+                      )}
+
+                      {row.remarks && (
+                        <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                          <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">详细备注说明</span>
+                          <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">{row.remarks}</p>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  )}
                 </div>
               );
             })}

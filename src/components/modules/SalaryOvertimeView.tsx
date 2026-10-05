@@ -77,6 +77,81 @@ export function calculateOvertimeDuration(startTime: string, endTime: string): n
   return getOvertimeTimeDetails(startTime, endTime).hours;
 }
 
+export const OVERTIME_SHIFT_PRESETS = [
+  {
+    label: '平日延时',
+    span: '17:00~20:00',
+    start: '17:00',
+    end: '20:00',
+    hours: 3,
+    type: 'workday' as const,
+    multiplier: 1.5,
+  },
+  {
+    label: '晚间深加班',
+    span: '20:00~00:00',
+    start: '20:00',
+    end: '00:00',
+    hours: 4,
+    type: 'workday' as const,
+    multiplier: 1.5,
+  },
+  {
+    label: '周末半天(早)',
+    span: '08:00~12:00',
+    start: '08:00',
+    end: '12:00',
+    hours: 4,
+    type: 'weekend' as const,
+    multiplier: 2.0,
+  },
+  {
+    label: '周末半天(午)',
+    span: '12:00~17:00',
+    start: '12:00',
+    end: '17:00',
+    hours: 5,
+    type: 'weekend' as const,
+    multiplier: 2.0,
+  },
+  {
+    label: '周末半天(晚)',
+    span: '12:00~20:00',
+    start: '12:00',
+    end: '20:00',
+    hours: 8,
+    type: 'weekend' as const,
+    multiplier: 2.0,
+  },
+  {
+    label: '周末全天(11h)',
+    span: '08:00~20:00 (休1h)',
+    start: '08:00',
+    end: '20:00',
+    hours: 11,
+    type: 'weekend' as const,
+    multiplier: 2.0,
+  },
+  {
+    label: '周末全天(夜12h)',
+    span: '20:00~08:00',
+    start: '20:00',
+    end: '08:00',
+    hours: 12,
+    type: 'weekend' as const,
+    multiplier: 2.0,
+  },
+  {
+    label: '周末全天(9h)',
+    span: '08:00~17:00',
+    start: '08:00',
+    end: '17:00',
+    hours: 9,
+    type: 'weekend' as const,
+    multiplier: 2.0,
+  },
+];
+
 interface SalaryOvertimeViewProps {
   salaries: SalaryRecord[];
   onSaveSalary: (record: SalaryRecord) => void;
@@ -126,16 +201,17 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
   // --- Overtime Modal State ---
   const [isOvertimeModalOpen, setIsOvertimeModalOpen] = useState(false);
   const [editingOvertimeId, setEditingOvertimeId] = useState<string | null>(null);
+  const [expandedOvertimeId, setExpandedOvertimeId] = useState<string | null>(null);
 
   const [overtimeForm, setOvertimeForm] = useState({
     date: new Date().toISOString().slice(0, 10),
     type: 'workday' as 'workday' | 'weekend' | 'holiday',
-    startTime: '18:30',
-    endTime: '21:30',
+    startTime: '17:00',
+    endTime: '20:00',
     durationHours: 3,
     multiplier: 1.5,
     settlementType: 'paid' as 'paid' | 'comp_time' | 'pending',
-    hourlyRate: 103.45,
+    hourlyRate: Number((defaultBaseSalary / 21.75 / 8).toFixed(2)) || 103.45,
     reason: '',
     approver: '',
     notes: '',
@@ -327,8 +403,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     setOvertimeForm({
       date: new Date().toISOString().slice(0, 10),
       type: 'workday',
-      startTime: '18:30',
-      endTime: '21:30',
+      startTime: '17:00',
+      endTime: '20:00',
       durationHours: 3,
       multiplier: 1.5,
       settlementType: 'paid',
@@ -669,65 +745,143 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
             </div>
           ) : (
             <>
-              {paginatedOvertimes.map((o) => (
-                <div
-                  key={o.id}
-                  className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs flex items-center justify-between gap-4 text-xs"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center justify-center text-xs">
-                      {o.durationHours}h
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-zinc-900 dark:text-zinc-100 font-mono">{o.date}</span>
-                        <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[10px]">
-                          {o.type === 'workday' ? '工作日延时 (1.5x)' : o.type === 'weekend' ? '周末加班 (2.0x)' : '法定节假日 (3.0x)'}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-zinc-400 mt-0.5">
-                        {o.startTime && o.endTime ? `${o.startTime} ~ ${o.endTime} · ` : ''}
-                        {o.reason || '日常加班'}
-                        {o.approver ? ` · 审批人: ${o.approver}` : ''}
-                      </div>
-                    </div>
-                  </div>
+              {paginatedOvertimes.map((o) => {
+                const isExpanded = expandedOvertimeId === o.id;
 
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <div className="font-bold font-mono text-zinc-900 dark:text-zinc-100 text-sm">
-                        {o.settlementType === 'comp_time' ? (
-                          <span className="text-purple-600 dark:text-purple-400">转调休 {o.durationHours}h</span>
-                        ) : (
-                          <span className="text-amber-600 dark:text-amber-400">{formatCurrency(o.estimatedPay, hidePrivacy)}</span>
+                return (
+                  <div
+                    key={o.id}
+                    className="rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs overflow-hidden transition-all hover:border-zinc-300 dark:hover:border-zinc-700"
+                  >
+                    {/* 概要行 (点击展开/折叠明细) */}
+                    <div
+                      onClick={() => setExpandedOvertimeId(isExpanded ? null : o.id)}
+                      className="p-4 sm:p-5 flex items-center justify-between gap-4 text-xs cursor-pointer hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-bold flex items-center justify-center text-xs shrink-0">
+                          {o.durationHours}h
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-zinc-900 dark:text-zinc-100 font-mono">{o.date}</span>
+                            <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[10px]">
+                              {o.type === 'workday' ? '工作日延时 (1.5x)' : o.type === 'weekend' ? '周末加班 (2.0x)' : '法定节假日 (3.0x)'}
+                            </span>
+                            {o.settlementType === 'comp_time' && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-300 font-medium">
+                                调休结算
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-zinc-400 mt-0.5 flex items-center gap-2">
+                            {o.startTime && o.endTime ? <span>{o.startTime} ~ {o.endTime}</span> : null}
+                            {o.reason && !isExpanded && <span>· {o.reason}</span>}
+                            {o.approver && <span>· 审批: {o.approver}</span>}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <div className="text-right shrink-0">
+                          <div className="font-bold font-mono text-zinc-900 dark:text-zinc-100 text-sm">
+                            {o.settlementType === 'comp_time' ? (
+                              <span className="text-purple-600 dark:text-purple-400">转调休 {o.durationHours}h</span>
+                            ) : (
+                              <span className="text-amber-600 dark:text-amber-400">{formatCurrency(o.estimatedPay, hidePrivacy)}</span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-zinc-400">
+                            {o.settlementType === 'comp_time' ? `已使用 ${o.compTimeHoursUsed || 0}h` : '折算加班费'}
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleOpenEditOvertime(o);
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                            title="编辑"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`确定删除 ${o.date} 的加班记录吗？`)) {
+                                onDeleteOvertime(o.id);
+                              }
+                            }}
+                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
+                            title="删除"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          <div className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200">
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 展开的完整加班明细面板 */}
+                    {isExpanded && (
+                      <div className="p-4 pt-0 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/20 text-xs space-y-3 animate-in fade-in duration-150">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-3">
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400 block">加班日期</span>
+                            <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{o.date}</span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400 block">加班类型与倍率</span>
+                            <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                              {o.type === 'workday' ? '工作日延时 (1.5倍)' : o.type === 'weekend' ? '周末加班 (2.0倍)' : '法定节假日 (3.0倍)'}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400 block">起止时间与时长</span>
+                            <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                              {o.startTime && o.endTime ? `${o.startTime} ~ ${o.endTime} (${o.durationHours}h)` : `${o.durationHours} 小时`}
+                            </span>
+                          </div>
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                            <span className="text-[10px] text-zinc-400 block">结算方式</span>
+                            <span className="font-bold text-zinc-800 dark:text-zinc-200">
+                              {o.settlementType === 'paid' ? '支付加班费' : o.settlementType === 'comp_time' ? '转调休假' : '待定'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          {o.approver && (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                              <span className="text-zinc-500 dark:text-zinc-400">审批负责人</span>
+                              <span className="font-semibold text-zinc-800 dark:text-zinc-200">{o.approver}</span>
+                            </div>
+                          )}
+                          {o.settlementType === 'comp_time' && (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                              <span className="text-zinc-500 dark:text-zinc-400">调休消耗情况</span>
+                              <span className="font-semibold text-purple-600 dark:text-purple-400">
+                                累计 {o.durationHours}h · 已用 {o.compTimeHoursUsed || 0}h · 剩余 {Math.max(0, o.durationHours - (o.compTimeHoursUsed || 0))}h
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {o.reason && (
+                          <div className="p-3 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-1">
+                            <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">加班事由与工作成果</span>
+                            <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed break-words">{o.reason}</p>
+                          </div>
                         )}
                       </div>
-                      <div className="text-[10px] text-zinc-400">
-                        {o.settlementType === 'comp_time' ? `已使用 ${o.compTimeHoursUsed || 0}h` : '折算加班费'}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleOpenEditOvertime(o)}
-                        className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm(`确定删除 ${o.date} 的加班记录吗？`)) {
-                            onDeleteOvertime(o.id);
-                          }
-                        }}
-                        className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               <Pagination
                 currentPage={overtimePage}
@@ -745,17 +899,117 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       {/* 3. 工时与薪酬月度联动核对子面板 */}
       {activeSubTab === 'linkage' && (
         <div className="space-y-4">
-          <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 flex items-start gap-3">
+          <div className="p-3.5 sm:p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 flex items-start gap-3">
             <Compass className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
             <div className="text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100">
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100 block sm:inline">
                 加班工时与实发工资自动勾稽核对：
               </span>
-              系统自动将当月登记的加班工时（结算类型为「转加班费」）折算出的预估加班费，与当月工资条中的「加班费」项目进行自动比对，帮助您清楚核对薪资发放是否足额、调休是否准确入账。
+              系统自动将当月登记的加班工时（转加班费）折算的预估费用，与工资条「加班费」进行比对，核实是否足额发放或调休准确。
             </div>
           </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-900">
+          {/* 移动端窄屏自适应卡片流 (优化字数与排版布局) */}
+          <div className="block md:hidden space-y-3">
+            {monthlyLinkageData.length === 0 ? (
+              <div className="p-8 text-center text-zinc-400 dark:text-zinc-600 text-xs bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80">
+                暂无对应月份的薪资或工时记录
+              </div>
+            ) : (
+              paginatedLinkageData.map((row) => {
+                const isMatched = row.salaryRecord && Math.abs(row.diff) < 1;
+                const isOver = row.salaryRecord && row.diff > 0;
+                const isUnder = row.salaryRecord && row.diff < 0;
+
+                return (
+                  <div
+                    key={row.month}
+                    className="p-4 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200/80 dark:border-zinc-800/80 shadow-xs space-y-3 text-xs"
+                  >
+                    {/* 顶部月份与差额状态 */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-zinc-900 dark:text-zinc-100 font-mono">
+                          {row.month}
+                        </span>
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                          {row.overtimeCount}次加班 / 共{row.totalHours}h
+                        </span>
+                      </div>
+
+                      <div>
+                        {!row.salaryRecord ? (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
+                            待发工资条
+                          </span>
+                        ) : isMatched ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 font-semibold border border-emerald-200/50">
+                            <CheckCircle2 className="w-3 h-3" /> 金额吻合
+                          </span>
+                        ) : isOver ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 font-semibold border border-blue-200/50">
+                            实发多 +{formatCurrency(row.diff)}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold border border-rose-200/50">
+                            实发少 {formatCurrency(Math.abs(row.diff))}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3列精简对比指标 */}
+                    <div className="grid grid-cols-3 gap-2 p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 text-[11px]">
+                      <div>
+                        <span className="text-zinc-400 text-[10px] block">预估加班费</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {hidePrivacy ? '••••' : formatCurrency(row.estimatedOvertimePay)}
+                        </span>
+                        <span className="text-[9px] text-amber-600 dark:text-amber-400 block mt-0.5">
+                          转薪 {row.paidHours}h
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-400 text-[10px] block">实发加班费</span>
+                        <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                          {row.salaryRecord
+                            ? hidePrivacy
+                              ? '••••'
+                              : formatCurrency(row.actualOvertimePay)
+                            : '-'}
+                        </span>
+                        <span className="text-[9px] text-zinc-400 block mt-0.5">
+                          {row.salaryRecord ? '工资条实发' : '未发放'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-zinc-400 text-[10px] block">调休工时</span>
+                        <span className="font-mono font-bold text-purple-600 dark:text-purple-400">
+                          {row.compHours} <span className="text-[9px] font-normal">h</span>
+                        </span>
+                        <span className="text-[9px] text-zinc-400 block mt-0.5">
+                          调休池累积
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 差异说明 (如果有差异) */}
+                    {row.salaryRecord && !isMatched && (
+                      <div className="text-[11px] p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/40 text-zinc-500 dark:text-zinc-400 flex items-center justify-between">
+                        <span>核对差额比对:</span>
+                        <span className={`font-mono font-bold ${isOver ? 'text-blue-600 dark:text-blue-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                          {isOver ? `多发 ¥${row.diff.toFixed(2)}` : `少发 ¥${Math.abs(row.diff).toFixed(2)}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* 桌面/平板端完整数据表格 */}
+          <div className="hidden md:block overflow-x-auto rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 bg-white dark:bg-zinc-900">
             <table className="w-full text-left text-xs">
               <thead className="bg-zinc-50/80 dark:bg-zinc-800/40 text-zinc-500 dark:text-zinc-400 font-medium border-b border-zinc-200/80 dark:border-zinc-800/80">
                 <tr>
@@ -763,8 +1017,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                   <th className="p-3.5">总加班工时</th>
                   <th className="p-3.5">转薪工时</th>
                   <th className="p-3.5">转调休工时</th>
-                  <th className="p-3.5">系统预估加班费</th>
-                  <th className="p-3.5">工资条实发加班费</th>
+                  <th className="p-3.5">预估加班费</th>
+                  <th className="p-3.5">工资条实发</th>
                   <th className="p-3.5">核对差额状态</th>
                 </tr>
               </thead>
@@ -801,7 +1055,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             formatCurrency(row.actualOvertimePay)
                           )
                         ) : (
-                          <span className="text-zinc-400 font-sans text-[11px]">未录入该月工资条</span>
+                          <span className="text-zinc-400 font-sans text-[11px]">未录入工资条</span>
                         )}
                       </td>
                       <td className="p-3.5 font-sans">
@@ -1073,37 +1327,40 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                   </div>
                 </div>
 
-                {/* 常用加班班次快捷预设 (一键填入起止时间并自动计算工时) */}
-                <div className="flex flex-wrap items-center gap-1">
-                  <span className="text-[10px] text-zinc-400 mr-0.5">常用班次:</span>
-                  {[
-                    { label: '平日延时 (18:30~21:30)', start: '18:30', end: '21:30', hours: 3 },
-                    { label: '晚间深加班 (18:30~22:30)', start: '18:30', end: '22:30', hours: 4 },
-                    { label: '周末半天 (09:00~13:00)', start: '09:00', end: '13:00', hours: 4 },
-                    { label: '周末全天 (09:00~18:00)', start: '09:00', end: '18:00', hours: 8 },
-                    { label: '通宵夜班 (21:00~03:00)', start: '21:00', end: '03:00', hours: 6 },
-                  ].map((preset) => (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => {
-                        setOvertimeForm({
-                          ...overtimeForm,
-                          startTime: preset.start,
-                          endTime: preset.end,
-                          durationHours: preset.hours,
-                        });
-                      }}
-                      className="text-[10px] px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors cursor-pointer"
-                    >
-                      {preset.label}
-                    </button>
-                  ))}
+                {/* 常用加班班次快捷预设 (一键填入起止时间并自动计算工时与倍率) */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">常用班次快捷填入:</span>
+                    <span className="text-[10px] text-zinc-400">点击自动设置时间、工时与倍率</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {OVERTIME_SHIFT_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() => {
+                          setOvertimeForm({
+                            ...overtimeForm,
+                            startTime: preset.start,
+                            endTime: preset.end,
+                            durationHours: preset.hours,
+                            type: preset.type,
+                            multiplier: preset.multiplier,
+                          });
+                        }}
+                        className="text-[11px] p-1.5 rounded-xl bg-zinc-100/80 dark:bg-zinc-800/80 text-zinc-700 dark:text-zinc-300 border border-zinc-200/80 dark:border-zinc-700/80 hover:bg-amber-50 hover:border-amber-300 dark:hover:bg-amber-950/40 dark:hover:border-amber-800 transition-colors cursor-pointer text-left flex flex-col justify-between"
+                      >
+                        <span className="font-semibold text-zinc-900 dark:text-zinc-100">{preset.label}</span>
+                        <span className="text-[10px] text-zinc-400 font-mono mt-0.5">{preset.span} ({preset.hours}h)</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 {/* 实时工时计算与跨夜检测卡片 */}
                 {(() => {
                   const details = getOvertimeTimeDetails(overtimeForm.startTime, overtimeForm.endTime);
+                  const est = (Number(overtimeForm.durationHours) * Number(overtimeForm.hourlyRate) * Number(overtimeForm.multiplier)).toFixed(2);
                   return (
                     <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/60 space-y-1 text-xs">
                       <div className="flex items-center justify-between">
@@ -1119,12 +1376,12 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                           </span>
                         )}
                       </div>
-                      <div className="flex items-center justify-between text-[11px] font-mono text-zinc-600 dark:text-zinc-400">
+                      <div className="flex flex-wrap items-center justify-between gap-1 text-[11px] font-mono text-zinc-600 dark:text-zinc-400">
                         <span>
-                          系统已根据起止时间自动计算工时: <strong className="text-amber-700 dark:text-amber-400 font-bold">{details.hours} 小时</strong>
+                          系统工时: <strong className="text-amber-700 dark:text-amber-400 font-bold">{details.hours} 小时</strong>
                         </span>
                         <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
-                          预计加班费: ¥{(Number(overtimeForm.durationHours) * Number(overtimeForm.hourlyRate) * Number(overtimeForm.multiplier)).toFixed(2)}
+                          预计加班费: {overtimeForm.durationHours}h × ¥{Number(overtimeForm.hourlyRate).toFixed(2)} × {overtimeForm.multiplier}x = ¥{est}
                         </span>
                       </div>
                     </div>
@@ -1132,17 +1389,74 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                 })()}
               </div>
 
-              {/* 加班时长 (自动计算，支持手动微调) 与结算方式 */}
+              {/* 加班基准时薪 (自定义设置) 与倍率设置 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
-                      加班工时 (小时)
+                      加班基准时薪 (元/小时)
                     </label>
-                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                      ⚡ 自动计算
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const auto = Number((defaultBaseSalary / 21.75 / 8).toFixed(2));
+                        setOvertimeForm({ ...overtimeForm, hourlyRate: auto });
+                      }}
+                      className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                      title={`按基准月薪 ¥${defaultBaseSalary} 自动推算: ¥${(defaultBaseSalary / 21.75 / 8).toFixed(2)}/h`}
+                    >
+                      ⚡ 按月薪基数推算
+                    </button>
                   </div>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-mono text-sm">¥</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      required
+                      value={overtimeForm.hourlyRate}
+                      onChange={(e) =>
+                        setOvertimeForm({ ...overtimeForm, hourlyRate: Number(e.target.value) })
+                      }
+                      className="w-full min-w-0 block pl-7 pr-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-sm"
+                      placeholder="如: 103.45"
+                    />
+                  </div>
+                  <div className="text-[10px] text-zinc-400 mt-1">
+                    支持自由修改输入，用于折算加班费
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
+                    结算方式
+                  </label>
+                  <select
+                    value={overtimeForm.settlementType}
+                    onChange={(e) =>
+                      setOvertimeForm({ ...overtimeForm, settlementType: e.target.value as any })
+                    }
+                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 text-sm"
+                  >
+                    <option value="paid">发放加班费 (计入应发工资)</option>
+                    <option value="comp_time">计入调休池 (折算调休假期)</option>
+                    <option value="pending">待定结算</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 加班时长 (自动计算，支持手动微调) */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium">
+                    加班结算工时 (小时)
+                  </label>
+                  <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                    ⚡ 支持快捷扣除就餐休息
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
                   <input
                     type="number"
                     step="0.1"
@@ -1154,7 +1468,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     }
                     className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono font-bold text-sm"
                   />
-                  <div className="flex flex-wrap gap-1 mt-1.5">
+                  <div className="flex flex-wrap gap-1">
                     <button
                       type="button"
                       onClick={() =>
@@ -1166,7 +1480,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                           ),
                         })
                       }
-                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 cursor-pointer"
+                      className="text-[10px] px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
                     >
                       -0.5h 晚餐
                     </button>
@@ -1181,7 +1495,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                           ),
                         })
                       }
-                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 cursor-pointer"
+                      className="text-[10px] px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 hover:text-zinc-900 dark:hover:text-zinc-100 cursor-pointer"
                     >
                       -1h 休息
                     </button>
@@ -1194,27 +1508,11 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                         );
                         setOvertimeForm({ ...overtimeForm, durationHours: auto });
                       }}
-                      className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 cursor-pointer"
+                      className="text-[10px] px-2 py-1 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 cursor-pointer"
                     >
                       ⚡ 重新按起止计算
                     </button>
                   </div>
-                </div>
-                <div className="min-w-0">
-                  <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">
-                    结算方式
-                  </label>
-                  <select
-                    value={overtimeForm.settlementType}
-                    onChange={(e) =>
-                      setOvertimeForm({ ...overtimeForm, settlementType: e.target.value as any })
-                    }
-                    className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
-                  >
-                    <option value="paid">发放加班费</option>
-                    <option value="comp_time">计入调休池</option>
-                    <option value="pending">待结算</option>
-                  </select>
                 </div>
               </div>
 

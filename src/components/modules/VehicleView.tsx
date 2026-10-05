@@ -4,6 +4,8 @@ import {
   Car,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Download,
   Edit2,
   Fuel,
@@ -86,9 +88,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
   // Modals
   const [isFuelModalOpen, setIsFuelModalOpen] = useState(false);
   const [editingFuelId, setEditingFuelId] = useState<string | null>(null);
+  const [expandedFuelId, setExpandedFuelId] = useState<string | null>(null);
 
   const [isMaintModalOpen, setIsMaintModalOpen] = useState(false);
   const [editingMaintId, setEditingMaintId] = useState<string | null>(null);
+  const [expandedMaintId, setExpandedMaintId] = useState<string | null>(null);
 
   // 车辆档案管理与编辑/添加 Modal
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
@@ -813,133 +817,207 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
             </div>
           ) : (
             <>
-              {/* 移动端窄屏精简卡片流 */}
+              {/* 移动端与自适应卡片流 (支持点击展开完整明细) */}
               <div className="block lg:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
                 {paginatedFuels.map((f) => {
                   const isElectric = currentVehicle.fuelType === 'electric' || f.fuelType?.includes('电');
+                  const isExpanded = expandedFuelId === f.id;
+
                   return (
                     <div
                       key={f.id}
-                      className="p-3.5 sm:p-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors space-y-2.5"
+                      className="transition-colors overflow-hidden"
                     >
-                      {/* 顶部行：日期、站点、加满标识与实付总额 */}
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div
-                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                              isElectric
-                                ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400'
-                                : 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400'
-                            }`}
-                          >
-                            {isElectric ? <Zap className="w-4 h-4" /> : <Fuel className="w-4 h-4" />}
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100 text-xs">
-                                {f.date}
-                              </span>
-                              {f.station && (
-                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]">
-                                  {f.station}
-                                </span>
-                              )}
-                              {f.isFullTank ? (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50">
-                                  {isElectric ? '充满' : '加满'}
-                                </span>
-                              ) : (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
-                                  未加满
-                                </span>
-                              )}
-                              {f.isWarningLightOn && (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/50 flex items-center gap-0.5">
-                                  <AlertTriangle className="w-2.5 h-2.5" />
-                                  <span>{isElectric ? '低电' : '亮灯'}</span>
-                                </span>
-                              )}
-                              {f.isMissedPrevious && (
-                                <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200/50">
-                                  漏记
-                                </span>
-                              )}
+                      {/* 概要行 (点击展开/折叠明细) */}
+                      <div
+                        onClick={() => setExpandedFuelId(isExpanded ? null : f.id)}
+                        className="p-3.5 sm:p-4 hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 cursor-pointer space-y-2.5 transition-colors"
+                      >
+                        {/* 顶部行：日期、站点、加满标识与实付总额 */}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                isElectric
+                                  ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-400'
+                                  : 'bg-amber-50 text-amber-600 dark:bg-amber-950/50 dark:text-amber-400'
+                              }`}
+                            >
+                              {isElectric ? <Zap className="w-4 h-4" /> : <Fuel className="w-4 h-4" />}
                             </div>
-                            <div className="text-[10px] text-zinc-400 truncate mt-0.5">
-                              {f.fuelType || (isElectric ? '快充直流电' : '95# 汽油')}
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-mono font-bold text-zinc-900 dark:text-zinc-100 text-xs">
+                                  {f.date}
+                                </span>
+                                {f.station && (
+                                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 truncate max-w-[120px]">
+                                    {f.station}
+                                  </span>
+                                )}
+                                {f.isFullTank ? (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-800/50">
+                                    {isElectric ? '充满' : '加满'}
+                                  </span>
+                                ) : (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                                    未加满
+                                  </span>
+                                )}
+                                {f.isWarningLightOn && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 border border-amber-200/50 flex items-center gap-0.5">
+                                    <AlertTriangle className="w-2.5 h-2.5" />
+                                    <span>{isElectric ? '低电' : '亮灯'}</span>
+                                  </span>
+                                )}
+                                {f.isMissedPrevious && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200/50">
+                                    漏记
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-zinc-400 truncate mt-0.5">
+                                {f.fuelType || (isElectric ? '快充直流电' : '95# 汽油')}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0 flex items-center gap-2">
+                            <div>
+                              <div className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
+                                {formatCurrency(f.totalCost, hidePrivacy)}
+                              </div>
+                              <div className="text-[10px] text-zinc-400 font-mono">
+                                ¥{f.unitPrice.toFixed(2)}/{isElectric ? 'kWh' : 'L'}
+                              </div>
+                            </div>
+                            <div className="text-zinc-400 p-0.5">
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </div>
                           </div>
                         </div>
 
-                        <div className="text-right shrink-0">
-                          <div className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-                            {formatCurrency(f.totalCost, hidePrivacy)}
-                          </div>
-                          <div className="text-[10px] text-zinc-400 font-mono">
-                            ¥{f.unitPrice.toFixed(2)}/{isElectric ? 'kWh' : 'L'}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* 核心指标网格：表显里程、充加量、百公里能耗 */}
-                      <div className="grid grid-cols-3 gap-1.5 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 text-[11px]">
-                        <div>
-                          <span className="text-zinc-400 text-[10px] block">表显里程</span>
-                          <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
-                            {f.odometer.toLocaleString()} <span className="text-[9px] font-normal text-zinc-400">km</span>
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-zinc-400 text-[10px] block">{isElectric ? '充电量' : '加油量'}</span>
-                          <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
-                            {f.fuelAmount} <span className="text-[9px] font-normal text-zinc-400">{isElectric ? 'kWh' : 'L'}</span>
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-zinc-400 text-[10px] block">百公里能耗</span>
-                          {f.calculatedFuelEconomy ? (
-                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                              {f.calculatedFuelEconomy.toFixed(1)} <span className="text-[9px] font-normal">{isElectric ? 'kWh' : 'L'}</span>
+                        {/* 概要指标网格 */}
+                        <div className="grid grid-cols-3 gap-1.5 p-2 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-100 dark:border-zinc-800 text-[11px]">
+                          <div>
+                            <span className="text-zinc-400 text-[10px] block">表显里程</span>
+                            <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                              {f.odometer.toLocaleString()} <span className="text-[9px] font-normal text-zinc-400">km</span>
                             </span>
-                          ) : (
-                            <span className="text-zinc-400 text-[10px]">累计中</span>
-                          )}
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 text-[10px] block">{isElectric ? '充电量' : '加油量'}</span>
+                            <span className="font-mono font-semibold text-zinc-800 dark:text-zinc-200">
+                              {f.fuelAmount} <span className="text-[9px] font-normal text-zinc-400">{isElectric ? 'kWh' : 'L'}</span>
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-zinc-400 text-[10px] block">百公里能耗</span>
+                            {f.calculatedFuelEconomy ? (
+                              <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                {f.calculatedFuelEconomy.toFixed(1)} <span className="text-[9px] font-normal">{isElectric ? 'kWh' : 'L'}</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-400 text-[10px]">累计中</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* 底部备注与快捷操作 */}
+                        <div className="flex items-center justify-between pt-0.5 text-xs">
+                          <div className="text-[11px] text-zinc-400 truncate pr-2">
+                            {f.notes && !isExpanded ? (
+                              <span className="text-zinc-600 dark:text-zinc-400">“{f.notes}”</span>
+                            ) : f.costPerKm ? (
+                              `约 ¥${f.costPerKm.toFixed(2)}/km`
+                            ) : (
+                              ''
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditFuel(f);
+                              }}
+                              className="px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>编辑</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`确定删除 ${f.date} 的这笔补能记录吗？`)) {
+                                  onDeleteFuel(f.id);
+                                }
+                              }}
+                              className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                              title="删除"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
                       </div>
 
-                      {/* 底部备注与快捷操作 */}
-                      <div className="flex items-center justify-between pt-0.5 text-xs">
-                        <div className="text-[11px] text-zinc-400 truncate pr-2">
-                          {f.notes ? (
-                            <span className="text-zinc-600 dark:text-zinc-400">“{f.notes}”</span>
-                          ) : f.costPerKm ? (
-                            `约 ¥${f.costPerKm.toFixed(2)}/km`
-                          ) : (
-                            ''
+                      {/* 展开的完整补能明细面板 */}
+                      {isExpanded && (
+                        <div className="p-3.5 sm:p-4 pt-0 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/20 text-xs space-y-2.5 animate-in fade-in duration-150">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5">
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">补能日期</span>
+                              <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{f.date}</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">能源种类与标号</span>
+                              <span className="font-bold text-zinc-800 dark:text-zinc-200">{f.fuelType || '95# 汽油'}</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">期间行驶小计</span>
+                              <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                                {f.tripDistance ? `${f.tripDistance.toFixed(1)} km` : '-'}
+                              </span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">每公里成本</span>
+                              <span className="font-mono font-bold text-amber-600 dark:text-amber-400">
+                                {f.costPerKm ? `¥${f.costPerKm.toFixed(2)}/km` : '-'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* 状态指示栏 */}
+                          <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                            <div className="flex items-center gap-3">
+                              <span className="text-zinc-400">加油状态:</span>
+                              <span className="font-medium text-zinc-800 dark:text-zinc-200">
+                                {f.isFullTank ? (isElectric ? '充满 (100%)' : '加满跳枪') : '未加满'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-zinc-400">油表黄灯:</span>
+                              <span className={`font-medium ${f.isWarningLightOn ? 'text-amber-600 dark:text-amber-400' : 'text-zinc-700 dark:text-zinc-300'}`}>
+                                {f.isWarningLightOn ? (isElectric ? '低电告警亮起' : '油表黄灯亮起') : '正常'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-zinc-400">记录连续性:</span>
+                              <span className={`font-medium ${f.isMissedPrevious ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                {f.isMissedPrevious ? '曾有漏记' : '连续记录'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {f.notes && (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-0.5">
+                              <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">补能备注</span>
+                              <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed">{f.notes}</p>
+                            </div>
                           )}
                         </div>
-
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            onClick={() => handleOpenEditFuel(f)}
-                            className="px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] flex items-center gap-1 cursor-pointer"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                            <span>编辑</span>
-                          </button>
-                          <button
-                            onClick={() => {
-                              if (window.confirm(`确定删除 ${f.date} 的这笔补能记录吗？`)) {
-                                onDeleteFuel(f.id);
-                              }
-                            }}
-                            className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
-                            title="删除"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })}
@@ -1075,70 +1153,161 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
             </div>
           ) : (
             <>
-              {/* 移动端窄屏精简维保卡片流 */}
+              {/* 移动端与自适应卡片流 (支持点击展开完整明细) */}
               <div className="block lg:hidden divide-y divide-zinc-100 dark:divide-zinc-800/60">
-                {paginatedMaintenances.map((m) => (
-                  <div
-                    key={m.id}
-                    className="p-3.5 sm:p-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-800/30 transition-colors space-y-2.5"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-semibold text-zinc-700 dark:text-zinc-300 shrink-0">
-                          {categoryLabels[m.category] || m.category}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="font-bold text-zinc-900 dark:text-zinc-100 text-xs truncate">
-                            {m.title}
+                {paginatedMaintenances.map((m) => {
+                  const isExpanded = expandedMaintId === m.id;
+
+                  return (
+                    <div
+                      key={m.id}
+                      className="transition-colors overflow-hidden"
+                    >
+                      {/* 概要行 (点击展开/折叠明细) */}
+                      <div
+                        onClick={() => setExpandedMaintId(isExpanded ? null : m.id)}
+                        className="p-3.5 sm:p-4 hover:bg-zinc-50/60 dark:hover:bg-zinc-800/40 cursor-pointer space-y-2.5 transition-colors"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-semibold text-zinc-700 dark:text-zinc-300 shrink-0">
+                              {categoryLabels[m.category] || m.category}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="font-bold text-zinc-900 dark:text-zinc-100 text-xs truncate">
+                                {m.title}
+                              </div>
+                              <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                                {m.date} · {m.shopName || '维保门店'}
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
-                            {m.date} · {m.shopName || '维保门店'}
+
+                          <div className="text-right shrink-0 flex items-center gap-2">
+                            <div>
+                              <div className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
+                                {formatCurrency(m.totalCost, hidePrivacy)}
+                              </div>
+                              <div className="text-[10px] text-zinc-400 font-mono">
+                                {m.odometer ? `${m.odometer.toLocaleString()} km` : ''}
+                              </div>
+                            </div>
+                            <div className="text-zinc-400 p-0.5">
+                              {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* 概要项（折叠时简要展示前2项） */}
+                        {m.items && m.items.length > 0 && !isExpanded && (
+                          <div className="text-[11px] text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800 truncate">
+                            {m.items.join(' / ')}
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between pt-0.5 text-xs">
+                          <div className="text-[10px] text-zinc-400 truncate pr-2">
+                            {m.nextServiceOdometer ? `下次建议: ${m.nextServiceOdometer.toLocaleString()} km` : ''}
+                            {m.nextServiceDate ? ` · 预计 ${m.nextServiceDate}` : ''}
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenEditMaint(m);
+                              }}
+                              className="px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] flex items-center gap-1 cursor-pointer"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                              <span>编辑</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
+                                  onDeleteMaintenance(m.id);
+                                }
+                              }}
+                              className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                              title="删除"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <div className="font-mono font-bold text-sm sm:text-base text-zinc-900 dark:text-zinc-100">
-                          {formatCurrency(m.totalCost, hidePrivacy)}
+                      {/* 展开的完整维保明细面板 */}
+                      {isExpanded && (
+                        <div className="p-3.5 sm:p-4 pt-0 border-t border-zinc-100 dark:border-zinc-800/80 bg-zinc-50/50 dark:bg-zinc-800/20 text-xs space-y-2.5 animate-in fade-in duration-150">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2.5">
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">维保日期</span>
+                              <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">{m.date}</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">维保类别</span>
+                              <span className="font-bold text-zinc-800 dark:text-zinc-200">{categoryLabels[m.category] || m.category}</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">维保门店</span>
+                              <span className="font-medium text-zinc-800 dark:text-zinc-200 truncate block">{m.shopName || '-'}</span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800">
+                              <span className="text-[10px] text-zinc-400 block">保养时表显里程</span>
+                              <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                                {m.odometer ? `${m.odometer.toLocaleString()} km` : '-'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {m.items && m.items.length > 0 && (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-1.5">
+                              <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">维保施工项目清单</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {m.items.map((item, idx) => (
+                                  <span
+                                    key={idx}
+                                    className="px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-[11px] font-medium"
+                                  >
+                                    ✓ {item}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {m.nextServiceOdometer && (
+                              <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                                <span className="text-zinc-400 text-[11px]">下次建议保养里程:</span>
+                                <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                                  {m.nextServiceOdometer.toLocaleString()} km
+                                </span>
+                              </div>
+                            )}
+                            {m.nextServiceDate && (
+                              <div className="p-2 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 flex items-center justify-between">
+                                <span className="text-zinc-400 text-[11px]">下次建议保养时间:</span>
+                                <span className="font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                                  {m.nextServiceDate}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+
+                          {m.notes && (
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/60 dark:border-zinc-800 space-y-0.5">
+                              <span className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider block">维保备注与师傅建议</span>
+                              <p className="text-zinc-700 dark:text-zinc-300 leading-relaxed">{m.notes}</p>
+                            </div>
+                          )}
                         </div>
-                      </div>
+                      )}
                     </div>
-
-                    {m.items && m.items.length > 0 && (
-                      <div className="text-[11px] text-zinc-500 dark:text-zinc-400 bg-zinc-50 dark:bg-zinc-800/50 p-2 rounded-xl border border-zinc-100 dark:border-zinc-800">
-                        {m.items.join(' / ')}
-                      </div>
-                    )}
-
-                    <div className="flex items-center justify-between pt-0.5 text-xs">
-                      <div className="text-[10px] text-zinc-400 truncate pr-2">
-                        {m.odometer ? `表显: ${m.odometer.toLocaleString()} km` : ''}
-                        {m.nextServiceOdometer ? ` · 下次: ${m.nextServiceOdometer.toLocaleString()} km` : ''}
-                      </div>
-
-                      <div className="flex items-center gap-1 shrink-0">
-                        <button
-                          onClick={() => handleOpenEditMaint(m)}
-                          className="px-2.5 py-1 rounded-lg border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[11px] flex items-center gap-1 cursor-pointer"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                          <span>编辑</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
-                              onDeleteMaintenance(m.id);
-                            }
-                          }}
-                          className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
-                          title="删除"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {/* 桌面/宽屏端完整数据表格 */}
