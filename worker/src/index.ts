@@ -68,12 +68,24 @@ export default {
     }
 
     // 3. 严格身份认证校验 (P0)
-    const authResult = verifyAuthorization(request, env);
+    const authResult = await verifyAuthorization(request, env);
     if (!authResult.authorized) {
       return createErrorResponse(
         authResult.status || 401,
         authResult.errorCode || 'UNAUTHORIZED',
         authResult.errorMessage || 'Unauthorized',
+        requestId,
+        corsHeaders
+      );
+    }
+
+    // 针对大请求体的主动拒绝保护 (限制 10MB)
+    const contentLength = Number(request.headers.get('content-length') || 0);
+    if (contentLength > 10 * 1024 * 1024) {
+      return createErrorResponse(
+        413,
+        'PAYLOAD_TOO_LARGE',
+        '请求体超过 10MB 限制，请分批同步数据',
         requestId,
         corsHeaders
       );
@@ -236,16 +248,33 @@ export default {
         // 1. Salaries
         if (Array.isArray(payload.salaries)) {
           for (const s of payload.salaries) {
+            const customAllowancesJson = Array.isArray(s.customAllowances)
+              ? JSON.stringify(s.customAllowances)
+              : typeof s.custom_allowances_json === 'string'
+              ? s.custom_allowances_json
+              : null;
+
+            const customDeductionsJson = Array.isArray(s.customDeductions)
+              ? JSON.stringify(s.customDeductions)
+              : typeof s.custom_deductions_json === 'string'
+              ? s.custom_deductions_json
+              : null;
+
             statements.push(
               env.DB.prepare(
                 `INSERT INTO salaries (
                   id, month, company_name, base_salary, performance_pay, overtime_pay, allowance, other_bonus,
-                  pre_tax_deduction, gross_salary, pension_personal, medical_personal, unemployment_personal,
-                  housing_fund_personal, total_personal_insurance, pension_company, medical_company, unemployment_company,
+                  pre_tax_deduction, gross_salary,
+                  overtime_15_hours, overtime_15_pay, overtime_20_hours, overtime_20_pay, overtime_30_hours, overtime_30_pay,
+                  night_shift_days, night_shift_rate, night_shift_pay, full_attendance_pay, base_allowance, custom_allowances_json,
+                  pension_personal, medical_personal, unemployment_personal,
+                  housing_fund_personal, total_personal_insurance,
+                  is_custom_insurance, custom_deductions_json, other_deductions_total,
+                  pension_company, medical_company, unemployment_company,
                   injury_company, maternity_company, housing_fund_company, total_company_insurance, special_deductions,
                   tax_threshold, taxable_income, individual_income_tax, net_salary, company_total_cost, pay_date, notes,
                   created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   month = excluded.month,
                   company_name = excluded.company_name,
@@ -256,11 +285,26 @@ export default {
                   other_bonus = excluded.other_bonus,
                   pre_tax_deduction = excluded.pre_tax_deduction,
                   gross_salary = excluded.gross_salary,
+                  overtime_15_hours = excluded.overtime_15_hours,
+                  overtime_15_pay = excluded.overtime_15_pay,
+                  overtime_20_hours = excluded.overtime_20_hours,
+                  overtime_20_pay = excluded.overtime_20_pay,
+                  overtime_30_hours = excluded.overtime_30_hours,
+                  overtime_30_pay = excluded.overtime_30_pay,
+                  night_shift_days = excluded.night_shift_days,
+                  night_shift_rate = excluded.night_shift_rate,
+                  night_shift_pay = excluded.night_shift_pay,
+                  full_attendance_pay = excluded.full_attendance_pay,
+                  base_allowance = excluded.base_allowance,
+                  custom_allowances_json = excluded.custom_allowances_json,
                   pension_personal = excluded.pension_personal,
                   medical_personal = excluded.medical_personal,
                   unemployment_personal = excluded.unemployment_personal,
                   housing_fund_personal = excluded.housing_fund_personal,
                   total_personal_insurance = excluded.total_personal_insurance,
+                  is_custom_insurance = excluded.is_custom_insurance,
+                  custom_deductions_json = excluded.custom_deductions_json,
+                  other_deductions_total = excluded.other_deductions_total,
                   pension_company = excluded.pension_company,
                   medical_company = excluded.medical_company,
                   unemployment_company = excluded.unemployment_company,
@@ -289,11 +333,26 @@ export default {
                 s.otherBonus ?? s.other_bonus ?? 0,
                 s.preTaxDeduction ?? s.pre_tax_deduction ?? 0,
                 s.grossSalary ?? s.gross_salary ?? 0,
+                s.overtime15Hours ?? s.overtime_15_hours ?? 0,
+                s.overtime15Pay ?? s.overtime_15_pay ?? 0,
+                s.overtime20Hours ?? s.overtime_20_hours ?? 0,
+                s.overtime20Pay ?? s.overtime_20_pay ?? 0,
+                s.overtime30Hours ?? s.overtime_30_hours ?? 0,
+                s.overtime30Pay ?? s.overtime_30_pay ?? 0,
+                s.nightShiftDays ?? s.night_shift_days ?? 0,
+                s.nightShiftRate ?? s.night_shift_rate ?? 0,
+                s.nightShiftPay ?? s.night_shift_pay ?? 0,
+                s.fullAttendancePay ?? s.full_attendance_pay ?? 0,
+                s.baseAllowance ?? s.base_allowance ?? 0,
+                customAllowancesJson,
                 s.pensionPersonal ?? s.pension_personal ?? 0,
                 s.medicalPersonal ?? s.medical_personal ?? 0,
                 s.unemploymentPersonal ?? s.unemployment_personal ?? 0,
                 s.housingFundPersonal ?? s.housing_fund_personal ?? 0,
                 s.totalPersonalInsurance ?? s.total_personal_insurance ?? 0,
+                (s.isCustomInsurance ?? s.is_custom_insurance) ? 1 : 0,
+                customDeductionsJson,
+                s.otherDeductionsTotal ?? s.other_deductions_total ?? 0,
                 s.pensionCompany ?? s.pension_company ?? 0,
                 s.medicalCompany ?? s.medical_company ?? 0,
                 s.unemploymentCompany ?? s.unemployment_company ?? 0,
@@ -325,8 +384,8 @@ export default {
                 `INSERT INTO overtimes (
                   id, date, type, start_time, end_time, duration_hours, multiplier,
                   settlement_type, hourly_rate, estimated_pay, comp_time_hours_used,
-                  reason, approver, notes, created_at, updated_at, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  reason, approver, is_night_shift, night_shift_subsidy, notes, created_at, updated_at, deleted_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(id) DO UPDATE SET
                   date = excluded.date,
                   type = excluded.type,
@@ -340,6 +399,8 @@ export default {
                   comp_time_hours_used = excluded.comp_time_hours_used,
                   reason = excluded.reason,
                   approver = excluded.approver,
+                  is_night_shift = excluded.is_night_shift,
+                  night_shift_subsidy = excluded.night_shift_subsidy,
                   notes = excluded.notes,
                   updated_at = excluded.updated_at,
                   deleted_at = excluded.deleted_at`
@@ -357,6 +418,8 @@ export default {
                 o.compTimeHoursUsed ?? o.comp_time_hours_used ?? 0,
                 o.reason || '',
                 o.approver || '',
+                (o.isNightShift ?? o.is_night_shift) ? 1 : 0,
+                o.nightShiftSubsidy ?? o.night_shift_subsidy ?? 0,
                 o.notes || '',
                 o.createdAt || o.created_at || nowIso,
                 o.updatedAt || o.updated_at || nowIso,

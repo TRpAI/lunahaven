@@ -1,3 +1,5 @@
+import { D1Database } from './types';
+
 /**
  * Cloudflare D1 数据库结构全量自愈与自动初始化 Schema
  */
@@ -15,11 +17,26 @@ export const D1_SCHEMA_STATEMENTS = [
     other_bonus REAL DEFAULT 0,
     pre_tax_deduction REAL DEFAULT 0,
     gross_salary REAL DEFAULT 0,
+    overtime_15_hours REAL DEFAULT 0,
+    overtime_15_pay REAL DEFAULT 0,
+    overtime_20_hours REAL DEFAULT 0,
+    overtime_20_pay REAL DEFAULT 0,
+    overtime_30_hours REAL DEFAULT 0,
+    overtime_30_pay REAL DEFAULT 0,
+    night_shift_days REAL DEFAULT 0,
+    night_shift_rate REAL DEFAULT 0,
+    night_shift_pay REAL DEFAULT 0,
+    full_attendance_pay REAL DEFAULT 0,
+    base_allowance REAL DEFAULT 0,
+    custom_allowances_json TEXT,
     pension_personal REAL DEFAULT 0,
     medical_personal REAL DEFAULT 0,
     unemployment_personal REAL DEFAULT 0,
     housing_fund_personal REAL DEFAULT 0,
     total_personal_insurance REAL DEFAULT 0,
+    is_custom_insurance INTEGER DEFAULT 0,
+    custom_deductions_json TEXT,
+    other_deductions_total REAL DEFAULT 0,
     pension_company REAL DEFAULT 0,
     medical_company REAL DEFAULT 0,
     unemployment_company REAL DEFAULT 0,
@@ -55,6 +72,8 @@ export const D1_SCHEMA_STATEMENTS = [
     comp_time_hours_used REAL DEFAULT 0,
     reason TEXT,
     approver TEXT,
+    is_night_shift INTEGER DEFAULT 0,
+    night_shift_subsidy REAL DEFAULT 0,
     notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -233,6 +252,21 @@ const REQUIRED_TABLES_SPEC: Record<string, { createSqlIndex: number; criticalCol
     criticalColumns: [
       { name: 'gross_salary', addSql: 'ALTER TABLE salaries ADD COLUMN gross_salary REAL DEFAULT 0' },
       { name: 'net_salary', addSql: 'ALTER TABLE salaries ADD COLUMN net_salary REAL DEFAULT 0' },
+      { name: 'overtime_15_hours', addSql: 'ALTER TABLE salaries ADD COLUMN overtime_15_hours REAL DEFAULT 0' },
+      { name: 'overtime_15_pay', addSql: 'ALTER TABLE salaries ADD COLUMN overtime_15_pay REAL DEFAULT 0' },
+      { name: 'overtime_20_hours', addSql: 'ALTER TABLE salaries ADD COLUMN overtime_20_hours REAL DEFAULT 0' },
+      { name: 'overtime_20_pay', addSql: 'ALTER TABLE salaries ADD COLUMN overtime_20_pay REAL DEFAULT 0' },
+      { name: 'overtime_30_hours', addSql: 'ALTER TABLE salaries ADD COLUMN overtime_30_hours REAL DEFAULT 0' },
+      { name: 'overtime_30_pay', addSql: 'ALTER TABLE salaries ADD COLUMN overtime_30_pay REAL DEFAULT 0' },
+      { name: 'night_shift_days', addSql: 'ALTER TABLE salaries ADD COLUMN night_shift_days REAL DEFAULT 0' },
+      { name: 'night_shift_rate', addSql: 'ALTER TABLE salaries ADD COLUMN night_shift_rate REAL DEFAULT 0' },
+      { name: 'night_shift_pay', addSql: 'ALTER TABLE salaries ADD COLUMN night_shift_pay REAL DEFAULT 0' },
+      { name: 'full_attendance_pay', addSql: 'ALTER TABLE salaries ADD COLUMN full_attendance_pay REAL DEFAULT 0' },
+      { name: 'base_allowance', addSql: 'ALTER TABLE salaries ADD COLUMN base_allowance REAL DEFAULT 0' },
+      { name: 'custom_allowances_json', addSql: 'ALTER TABLE salaries ADD COLUMN custom_allowances_json TEXT' },
+      { name: 'is_custom_insurance', addSql: 'ALTER TABLE salaries ADD COLUMN is_custom_insurance INTEGER DEFAULT 0' },
+      { name: 'custom_deductions_json', addSql: 'ALTER TABLE salaries ADD COLUMN custom_deductions_json TEXT' },
+      { name: 'other_deductions_total', addSql: 'ALTER TABLE salaries ADD COLUMN other_deductions_total REAL DEFAULT 0' },
       { name: 'updated_at', addSql: 'ALTER TABLE salaries ADD COLUMN updated_at TEXT NOT NULL DEFAULT ""' },
       { name: 'deleted_at', addSql: 'ALTER TABLE salaries ADD COLUMN deleted_at TEXT' },
     ],
@@ -242,6 +276,8 @@ const REQUIRED_TABLES_SPEC: Record<string, { createSqlIndex: number; criticalCol
     criticalColumns: [
       { name: 'comp_time_hours_used', addSql: 'ALTER TABLE overtimes ADD COLUMN comp_time_hours_used REAL DEFAULT 0' },
       { name: 'approver', addSql: 'ALTER TABLE overtimes ADD COLUMN approver TEXT' },
+      { name: 'is_night_shift', addSql: 'ALTER TABLE overtimes ADD COLUMN is_night_shift INTEGER DEFAULT 0' },
+      { name: 'night_shift_subsidy', addSql: 'ALTER TABLE overtimes ADD COLUMN night_shift_subsidy REAL DEFAULT 0' },
       { name: 'updated_at', addSql: 'ALTER TABLE overtimes ADD COLUMN updated_at TEXT NOT NULL DEFAULT ""' },
       { name: 'deleted_at', addSql: 'ALTER TABLE overtimes ADD COLUMN deleted_at TEXT' },
     ],
@@ -342,7 +378,7 @@ const REQUIRED_TABLES_SPEC: Record<string, { createSqlIndex: number; criticalCol
 /**
  * 深度检查并自动修复 D1 数据表与列完整性 (基于 PRAGMA table_info 权威探测)
  */
-export async function inspectAndRepairD1Schema(db: any): Promise<SchemaInspectionResult> {
+export async function inspectAndRepairD1Schema(db: D1Database): Promise<SchemaInspectionResult> {
   if (!db || typeof db.prepare !== 'function') {
     throw new Error(
       "Worker 未绑定 D1 数据库变量 (env.DB is undefined)。请在 Cloudflare 仪表盘 Worker -> Settings -> Variables and Secrets -> D1 Database Bindings 中添加绑定，Variable name 必须设置为 'DB'"
@@ -450,7 +486,7 @@ export async function inspectAndRepairD1Schema(db: any): Promise<SchemaInspectio
 /**
  * 自动检测并初始化 D1 数据库结构 (零配置自愈)
  */
-export async function ensureD1Schema(db: any, force = false): Promise<boolean> {
+export async function ensureD1Schema(db: D1Database, force = false): Promise<boolean> {
   if (!db || typeof db.prepare !== 'function') {
     throw new Error(
       "Worker 未绑定 D1 数据库变量 (env.DB is undefined)。请在 Cloudflare 仪表盘 Worker -> Settings -> Variables and Secrets -> D1 Database Bindings 中添加绑定，Variable name 必须设置为 'DB'"

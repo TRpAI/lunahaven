@@ -8,13 +8,16 @@ export interface AuthResult {
 }
 
 /**
- * 常量时间字符串比对，防止针对 Token 的侧信道时序攻击 (Side-Channel Timing Attacks)
+ * 基于 WebCrypto SHA-256 摘要的严格常量时间字符串比对
+ * 通过对两端凭据进行 SHA-256 哈希后固定以 32 字节比较，消除字符长度泄露与侧信道时序攻击隐患
  */
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
+async function timingSafeEqualAsync(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const aHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(a)));
+  const bHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(b)));
   let diff = 0;
-  for (let i = 0; i < a.length; i++) {
-    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  for (let i = 0; i < aHash.length; i++) {
+    diff |= aHash[i] ^ bHash[i];
   }
   return diff === 0;
 }
@@ -60,7 +63,8 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Client-Version',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
-    // 关键安全响应标头
+    // 关键安全响应标头 (Cloudflare Edge 规范)
+    'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
@@ -69,9 +73,9 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
 }
 
 /**
- * 生产环境强制 Token 鉴权 (兼容 API_TOKEN 与 AUTH_TOKEN，具备时序攻击防御)
+ * 生产环境强制 Token 鉴权 (兼容 API_TOKEN 与 AUTH_TOKEN，具备严格时序攻击防御)
  */
-export function verifyAuthorization(request: Request, env: Env): AuthResult {
+export async function verifyAuthorization(request: Request, env: Env): Promise<AuthResult> {
   const configuredToken = (env.API_TOKEN || env.AUTH_TOKEN || '').trim();
 
   if (!configuredToken) {
@@ -86,12 +90,22 @@ export function verifyAuthorization(request: Request, env: Env): AuthResult {
   const authHeader = request.headers.get('Authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-  if (!token || !timingSafeEqual(token, configuredToken)) {
+  if (!token) {
     return {
       authorized: false,
       status: 401,
       errorCode: 'UNAUTHORIZED',
-      errorMessage: '无效的 API Token 访问凭证，请检查客户端密钥设置',
+      errorMessage: '缺少有效的 Authorization Bearer API Token 凭据',
+    };
+  }
+
+  const isMatched = await timingSafeEqualAsync(token, configuredToken);
+  if (!isMatched) {
+    return {
+      authorized: false,
+      status: 401,
+      errorCode: 'UNAUTHORIZED',
+      errorMessage: '无效的 API Token 访问凭据，请检查客户端密钥设置',
     };
   }
 

@@ -16,6 +16,8 @@ import {
   Copy,
   Database,
   Download,
+  Eye,
+  EyeOff,
   FileCode,
   Fuel,
   Gift,
@@ -66,6 +68,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
 
   const [workerUrlInput, setWorkerUrlInput] = useState(d1Config.workerUrl || '');
   const [apiTokenInput, setApiTokenInput] = useState(d1Config.apiToken || '');
+  const [showApiToken, setShowApiToken] = useState(false);
   const [autoSyncInput, setAutoSyncInput] = useState<boolean>(d1Config.autoSync ?? true);
   const [autoSyncDelayInput, setAutoSyncDelayInput] = useState<number>(d1Config.autoSyncDelaySeconds ?? 15);
 
@@ -841,13 +844,23 @@ ALLOWED_ORIGIN = "*"`;
             <label className="block text-zinc-700 dark:text-zinc-300 font-medium mb-1">
               API 鉴权密钥 (AUTH_TOKEN)
             </label>
-            <input
-              type="password"
-              placeholder="填入在 Worker 环境变量中配置的 secret 字符串"
-              value={apiTokenInput}
-              onChange={(e) => setApiTokenInput(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
-            />
+            <div className="relative">
+              <input
+                type={showApiToken ? 'text' : 'password'}
+                placeholder="填入在 Worker 环境变量中配置的 secret 字符串"
+                value={apiTokenInput}
+                onChange={(e) => setApiTokenInput(e.target.value)}
+                className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+              />
+              <button
+                type="button"
+                onClick={() => setShowApiToken(!showApiToken)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 transition-colors cursor-pointer"
+                title={showApiToken ? '隐藏密钥' : '显示密钥'}
+              >
+                {showApiToken ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           {/* 操作触发自动推送同步设置 */}

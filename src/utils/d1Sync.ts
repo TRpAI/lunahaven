@@ -18,12 +18,33 @@ CREATE TABLE IF NOT EXISTS salaries (
     pre_tax_deduction REAL DEFAULT 0,   -- 税前扣减
     gross_salary REAL DEFAULT 0,        -- 应发合计
     
+    -- 加班明细拆解 (1.5x / 2.0x / 3.0x)
+    overtime_15_hours REAL DEFAULT 0,
+    overtime_15_pay REAL DEFAULT 0,
+    overtime_20_hours REAL DEFAULT 0,
+    overtime_20_pay REAL DEFAULT 0,
+    overtime_30_hours REAL DEFAULT 0,
+    overtime_30_pay REAL DEFAULT 0,
+    
+    -- 补贴明细拆解 (长夜班 / 全勤 / 自定义补贴)
+    night_shift_days REAL DEFAULT 0,
+    night_shift_rate REAL DEFAULT 0,
+    night_shift_pay REAL DEFAULT 0,
+    full_attendance_pay REAL DEFAULT 0,
+    base_allowance REAL DEFAULT 0,
+    custom_allowances_json TEXT,        -- 自定义补贴 JSON
+    
     -- 个人五险一金
     pension_personal REAL DEFAULT 0,    -- 养老保险(个人)
     medical_personal REAL DEFAULT 0,    -- 医疗保险(个人)
     unemployment_personal REAL DEFAULT 0, -- 失业保险(个人)
     housing_fund_personal REAL DEFAULT 0, -- 住房公积金(个人)
     total_personal_insurance REAL DEFAULT 0,
+    
+    -- 扣除项扩展 (五险一金微调与其它扣除)
+    is_custom_insurance INTEGER DEFAULT 0,
+    custom_deductions_json TEXT,        -- 其它自定义扣除项 JSON
+    other_deductions_total REAL DEFAULT 0,
     
     -- 企业五险一金
     pension_company REAL DEFAULT 0,     -- 养老保险(企业)
@@ -65,6 +86,8 @@ CREATE TABLE IF NOT EXISTS overtimes (
     comp_time_hours_used REAL DEFAULT 0,-- 已调休时长
     reason TEXT,                        -- 事由/项目
     approver TEXT,
+    is_night_shift INTEGER DEFAULT 0,   -- 1:长夜班, 0:常规
+    night_shift_subsidy REAL DEFAULT 0, -- 长夜班每日补贴标准
     notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -513,15 +536,23 @@ export function generateCloudflareD1SqlDump(data: LedgerFullData): string {
 
   // 1. Salaries
   for (const s of data.salaries) {
+    const customAllowancesJson = Array.isArray(s.customAllowances) ? JSON.stringify(s.customAllowances) : null;
+    const customDeductionsJson = Array.isArray(s.customDeductions) ? JSON.stringify(s.customDeductions) : null;
+
     lines.push(
       `INSERT OR REPLACE INTO salaries (
         id, month, company_name, base_salary, performance_pay, overtime_pay, allowance, other_bonus,
-        pre_tax_deduction, gross_salary, pension_personal, medical_personal, unemployment_personal,
-        housing_fund_personal, total_personal_insurance, pension_company, medical_company, unemployment_company,
+        pre_tax_deduction, gross_salary,
+        overtime_15_hours, overtime_15_pay, overtime_20_hours, overtime_20_pay, overtime_30_hours, overtime_30_pay,
+        night_shift_days, night_shift_rate, night_shift_pay, full_attendance_pay, base_allowance, custom_allowances_json,
+        pension_personal, medical_personal, unemployment_personal,
+        housing_fund_personal, total_personal_insurance,
+        is_custom_insurance, custom_deductions_json, other_deductions_total,
+        pension_company, medical_company, unemployment_company,
         injury_company, maternity_company, housing_fund_company, total_company_insurance, special_deductions,
         tax_threshold, taxable_income, individual_income_tax, net_salary, company_total_cost, pay_date, notes,
         created_at, updated_at, deleted_at
-      ) VALUES (${esc(s.id)}, ${esc(s.month)}, ${esc(s.companyName)}, ${esc(s.baseSalary)}, ${esc(s.performancePay)}, ${esc(s.overtimePay)}, ${esc(s.allowance)}, ${esc(s.otherBonus)}, ${esc(s.preTaxDeduction)}, ${esc(s.grossSalary)}, ${esc(s.pensionPersonal)}, ${esc(s.medicalPersonal)}, ${esc(s.unemploymentPersonal)}, ${esc(s.housingFundPersonal)}, ${esc(s.totalPersonalInsurance)}, ${esc(s.pensionCompany)}, ${esc(s.medicalCompany)}, ${esc(s.unemploymentCompany)}, ${esc(s.injuryCompany)}, ${esc(s.maternityCompany)}, ${esc(s.housingFundCompany)}, ${esc(s.totalCompanyInsurance)}, ${esc(s.specialDeductions)}, ${esc(s.taxThreshold)}, ${esc(s.taxableIncome)}, ${esc(s.individualIncomeTax)}, ${esc(s.netSalary)}, ${esc(s.companyTotalCost)}, ${esc(s.payDate)}, ${esc(s.notes)}, ${esc(s.createdAt)}, ${esc(s.updatedAt || s.createdAt)}, ${esc(s.deletedAt || null)});`
+      ) VALUES (${esc(s.id)}, ${esc(s.month)}, ${esc(s.companyName)}, ${esc(s.baseSalary)}, ${esc(s.performancePay)}, ${esc(s.overtimePay)}, ${esc(s.allowance)}, ${esc(s.otherBonus)}, ${esc(s.preTaxDeduction)}, ${esc(s.grossSalary)}, ${esc(s.overtime15Hours || 0)}, ${esc(s.overtime15Pay || 0)}, ${esc(s.overtime20Hours || 0)}, ${esc(s.overtime20Pay || 0)}, ${esc(s.overtime30Hours || 0)}, ${esc(s.overtime30Pay || 0)}, ${esc(s.nightShiftDays || 0)}, ${esc(s.nightShiftRate || 0)}, ${esc(s.nightShiftPay || 0)}, ${esc(s.fullAttendancePay || 0)}, ${esc(s.baseAllowance || 0)}, ${esc(customAllowancesJson)}, ${esc(s.pensionPersonal)}, ${esc(s.medicalPersonal)}, ${esc(s.unemploymentPersonal)}, ${esc(s.housingFundPersonal)}, ${esc(s.totalPersonalInsurance)}, ${s.isCustomInsurance ? 1 : 0}, ${esc(customDeductionsJson)}, ${esc(s.otherDeductionsTotal || 0)}, ${esc(s.pensionCompany)}, ${esc(s.medicalCompany)}, ${esc(s.unemploymentCompany)}, ${esc(s.injuryCompany)}, ${esc(s.maternityCompany)}, ${esc(s.housingFundCompany)}, ${esc(s.totalCompanyInsurance)}, ${esc(s.specialDeductions)}, ${esc(s.taxThreshold)}, ${esc(s.taxableIncome)}, ${esc(s.individualIncomeTax)}, ${esc(s.netSalary)}, ${esc(s.companyTotalCost)}, ${esc(s.payDate)}, ${esc(s.notes)}, ${esc(s.createdAt)}, ${esc(s.updatedAt || s.createdAt)}, ${esc(s.deletedAt || null)});`
     );
   }
 
@@ -530,9 +561,10 @@ export function generateCloudflareD1SqlDump(data: LedgerFullData): string {
     lines.push(
       `INSERT OR REPLACE INTO overtimes (
         id, date, type, start_time, end_time, duration_hours, multiplier, settlement_type,
-        hourly_rate, estimated_pay, comp_time_hours_used, reason, approver, notes,
+        hourly_rate, estimated_pay, comp_time_hours_used, reason, approver,
+        is_night_shift, night_shift_subsidy, notes,
         created_at, updated_at, deleted_at
-      ) VALUES (${esc(o.id)}, ${esc(o.date)}, ${esc(o.type)}, ${esc(o.startTime)}, ${esc(o.endTime)}, ${esc(o.durationHours)}, ${esc(o.multiplier)}, ${esc(o.settlementType)}, ${esc(o.hourlyRate)}, ${esc(o.estimatedPay)}, ${esc(o.compTimeHoursUsed || 0)}, ${esc(o.reason)}, ${esc(o.approver || '')}, ${esc(o.notes || '')}, ${esc(o.createdAt)}, ${esc(o.updatedAt || o.createdAt)}, ${esc(o.deletedAt || null)});`
+      ) VALUES (${esc(o.id)}, ${esc(o.date)}, ${esc(o.type)}, ${esc(o.startTime)}, ${esc(o.endTime)}, ${esc(o.durationHours)}, ${esc(o.multiplier)}, ${esc(o.settlementType)}, ${esc(o.hourlyRate)}, ${esc(o.estimatedPay)}, ${esc(o.compTimeHoursUsed || 0)}, ${esc(o.reason)}, ${esc(o.approver || '')}, ${o.isNightShift ? 1 : 0}, ${esc(o.nightShiftSubsidy || 0)}, ${esc(o.notes || '')}, ${esc(o.createdAt)}, ${esc(o.updatedAt || o.createdAt)}, ${esc(o.deletedAt || null)});`
     );
   }
 
@@ -706,11 +738,46 @@ export async function pullFromCloudflareWorker(
         otherBonus: Number(s.other_bonus ?? s.otherBonus ?? 0),
         preTaxDeduction: Number(s.pre_tax_deduction ?? s.preTaxDeduction ?? 0),
         grossSalary: Number(s.gross_salary ?? s.grossSalary ?? 0),
+        overtime15Hours: Number(s.overtime_15_hours ?? s.overtime15Hours ?? 0),
+        overtime15Pay: Number(s.overtime_15_pay ?? s.overtime15Pay ?? 0),
+        overtime20Hours: Number(s.overtime_20_hours ?? s.overtime20Hours ?? 0),
+        overtime20Pay: Number(s.overtime_20_pay ?? s.overtime20Pay ?? 0),
+        overtime30Hours: Number(s.overtime_30_hours ?? s.overtime30Hours ?? 0),
+        overtime30Pay: Number(s.overtime_30_pay ?? s.overtime30Pay ?? 0),
+        nightShiftDays: Number(s.night_shift_days ?? s.nightShiftDays ?? 0),
+        nightShiftRate: Number(s.night_shift_rate ?? s.nightShiftRate ?? 0),
+        nightShiftPay: Number(s.night_shift_pay ?? s.nightShiftPay ?? 0),
+        fullAttendancePay: Number(s.full_attendance_pay ?? s.fullAttendancePay ?? 0),
+        baseAllowance: Number(s.base_allowance ?? s.baseAllowance ?? 0),
+        customAllowances: (() => {
+          if (Array.isArray(s.customAllowances)) return s.customAllowances;
+          if (typeof s.custom_allowances_json === 'string') {
+            try {
+              return JSON.parse(s.custom_allowances_json);
+            } catch {
+              return [];
+            }
+          }
+          return [];
+        })(),
         pensionPersonal: Number(s.pension_personal ?? s.pensionPersonal ?? 0),
         medicalPersonal: Number(s.medical_personal ?? s.medicalPersonal ?? 0),
         unemploymentPersonal: Number(s.unemployment_personal ?? s.unemploymentPersonal ?? 0),
         housingFundPersonal: Number(s.housing_fund_personal ?? s.housingFundPersonal ?? 0),
         totalPersonalInsurance: Number(s.total_personal_insurance ?? s.totalPersonalInsurance ?? 0),
+        isCustomInsurance: toBoolean(s.is_custom_insurance ?? s.isCustomInsurance, false),
+        customDeductions: (() => {
+          if (Array.isArray(s.customDeductions)) return s.customDeductions;
+          if (typeof s.custom_deductions_json === 'string') {
+            try {
+              return JSON.parse(s.custom_deductions_json);
+            } catch {
+              return [];
+            }
+          }
+          return [];
+        })(),
+        otherDeductionsTotal: Number(s.other_deductions_total ?? s.otherDeductionsTotal ?? 0),
         pensionCompany: Number(s.pension_company ?? s.pensionCompany ?? 0),
         medicalCompany: Number(s.medical_company ?? s.medicalCompany ?? 0),
         unemploymentCompany: Number(s.unemployment_company ?? s.unemploymentCompany ?? 0),
@@ -744,6 +811,8 @@ export async function pullFromCloudflareWorker(
         compTimeHoursUsed: Number(o.comp_time_hours_used ?? o.compTimeHoursUsed ?? 0),
         reason: o.reason || '',
         approver: o.approver || '',
+        isNightShift: toBoolean(o.is_night_shift ?? o.isNightShift, false),
+        nightShiftSubsidy: Number(o.night_shift_subsidy ?? o.nightShiftSubsidy ?? 0),
         notes: o.notes || '',
         createdAt: o.created_at || o.createdAt || new Date().toISOString(),
         updatedAt: o.updated_at || o.updatedAt || o.created_at || new Date().toISOString(),

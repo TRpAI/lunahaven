@@ -18,12 +18,33 @@ CREATE TABLE IF NOT EXISTS salaries (
     pre_tax_deduction REAL DEFAULT 0,   -- 税前扣减
     gross_salary REAL DEFAULT 0,        -- 应发合计
     
+    -- 加班明细拆解 (1.5x / 2.0x / 3.0x)
+    overtime_15_hours REAL DEFAULT 0,
+    overtime_15_pay REAL DEFAULT 0,
+    overtime_20_hours REAL DEFAULT 0,
+    overtime_20_pay REAL DEFAULT 0,
+    overtime_30_hours REAL DEFAULT 0,
+    overtime_30_pay REAL DEFAULT 0,
+    
+    -- 补贴明细拆解 (长夜班 / 全勤 / 自定义补贴)
+    night_shift_days REAL DEFAULT 0,
+    night_shift_rate REAL DEFAULT 0,
+    night_shift_pay REAL DEFAULT 0,
+    full_attendance_pay REAL DEFAULT 0,
+    base_allowance REAL DEFAULT 0,
+    custom_allowances_json TEXT,        -- 自定义补贴 JSON
+    
     -- 个人五险一金
     pension_personal REAL DEFAULT 0,    -- 养老保险(个人)
     medical_personal REAL DEFAULT 0,    -- 医疗保险(个人)
     unemployment_personal REAL DEFAULT 0, -- 失业保险(个人)
     housing_fund_personal REAL DEFAULT 0, -- 住房公积金(个人)
     total_personal_insurance REAL DEFAULT 0,
+    
+    -- 扣除项扩展 (五险一金微调与其它扣除)
+    is_custom_insurance INTEGER DEFAULT 0,
+    custom_deductions_json TEXT,        -- 其它自定义扣除项 JSON
+    other_deductions_total REAL DEFAULT 0,
     
     -- 企业五险一金
     pension_company REAL DEFAULT 0,     -- 养老保险(企业)
@@ -65,6 +86,8 @@ CREATE TABLE IF NOT EXISTS overtimes (
     comp_time_hours_used REAL DEFAULT 0,-- 已调休时长
     reason TEXT,                        -- 事由/项目
     approver TEXT,
+    is_night_shift INTEGER DEFAULT 0,   -- 1:长夜班, 0:常规
+    night_shift_subsidy REAL DEFAULT 0, -- 长夜班每日补贴标准
     notes TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
