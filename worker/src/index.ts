@@ -1,22 +1,25 @@
-import { getCorsHeaders, verifyAuthorization } from './auth';
-import { ensureD1Schema, inspectAndRepairD1Schema } from './schema';
-import { Env, SyncPayload, D1PreparedStatement } from './types';
-import { createErrorResponse, createSuccessResponse, validateSyncPayload } from './validation';
+import { getCorsHeaders, isOriginAllowed, verifyAuthorization } from './auth';
+import { Env, SyncPayload, D1PreparedStatement, SyncMetaRecord } from './types';
+import { createErrorResponse, createSuccessResponse, sanitizeSettingsForStorage, validateSyncPayload } from './validation';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const requestId = crypto.randomUUID();
     const corsHeaders = getCorsHeaders(request, env);
 
-    // 1. 处理 CORS Preflight 预检请求
+    // 1. 处理 CORS Preflight 预检请求 (收紧跨域保护)
     if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: corsHeaders });
+      const origin = request.headers.get('Origin');
+      if (origin && !isOriginAllowed(origin, env)) {
+        return new Response(null, { status: 403, headers: corsHeaders });
+      }
+      return new Response(null, { status: 204, headers: corsHeaders });
     }
 
     const url = new URL(request.url);
 
     // 2. 生产级健康检查接口 (GET /api/health)
-    // 同时探测 Worker 运行状态与 D1 数据库连接可用性
+    // 纯只读探测，严禁在常规请求过程中动态执行 DDL 表结构变更
     if (url.pathname === '/api/health') {
       if (!env.DB) {
         return createErrorResponse(
@@ -30,36 +33,30 @@ export default {
       }
 
       try {
-        let meta = await env.DB.prepare(
+        const meta = await env.DB.prepare(
           "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
-        ).first().catch(() => null);
-
-        if (!meta) {
-          await ensureD1Schema(env.DB);
-          meta = await env.DB.prepare(
-            "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
-          ).first().catch(() => null);
-        }
+        ).first<SyncMetaRecord>().catch(() => null);
 
         return createSuccessResponse(
           {
             status: 'healthy',
             worker: 'ok',
             database: 'connected',
-            schemaVersion: meta?.schema_version ?? 2,
+            migration: meta ? 'ready' : 'pending_migration',
+            schemaVersion: meta?.schema_version ?? null,
             revision: meta?.revision ?? 1,
             lastSyncedAt: meta?.last_synced_at ?? null,
           },
           requestId,
           corsHeaders,
-          { service: 'qiyue-ledger-d1-api', version: '2.1.0' }
+          { service: 'qiyue-ledger-d1-api', version: '2.3.0' }
         );
       } catch (err: any) {
         console.error(`[${requestId}] Health check D1 error:`, err);
         return createErrorResponse(
           503,
           'DATABASE_UNHEALTHY',
-          `D1 数据库连接异常: ${err?.message || err}`,
+          'D1 数据库连接异常，请检查 Worker 绑定及 D1 运行状态',
           requestId,
           corsHeaders,
           { worker: 'ok', database: 'disconnected' }
@@ -79,13 +76,13 @@ export default {
       );
     }
 
-    // 针对大请求体的主动拒绝保护 (限制 10MB)
+    // 针对大请求体的主动拒绝保护 (严格收紧至 2MB，防止恶意大报文攻击与 Worker 超限)
     const contentLength = Number(request.headers.get('content-length') || 0);
-    if (contentLength > 10 * 1024 * 1024) {
+    if (contentLength > 2 * 1024 * 1024) {
       return createErrorResponse(
         413,
         'PAYLOAD_TOO_LARGE',
-        '请求体超过 10MB 限制，请分批同步数据',
+        '请求体超过 2MB 限制，请分批同步数据',
         requestId,
         corsHeaders
       );
@@ -103,18 +100,27 @@ export default {
     }
 
     try {
-      // 自动确保 D1 表结构已就绪 (自愈机制)
-      await ensureD1Schema(env.DB);
-      // 3.1 手动一键初始化/检查/修复表结构端点
-      if (
-        (request.method === 'POST' && (url.pathname === '/api/init' || url.pathname === '/api/schema/repair')) ||
-        (request.method === 'GET' && url.pathname === '/api/schema/inspect')
-      ) {
-        const inspectRes = await inspectAndRepairD1Schema(env.DB);
+      // 3.1 数据库结构与迁移状态只读探测端点 (无任何动态 DDL 变更)
+      if (request.method === 'GET' && (url.pathname === '/api/schema/status' || url.pathname === '/api/schema/inspect')) {
+        const meta = await env.DB.prepare(
+          "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
+        ).first<SyncMetaRecord>().catch(() => null);
+
+        // 获取当前已有表清单 (只读)
+        const tablesRes = await env.DB.prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%'"
+        ).all().catch(() => ({ results: [] }));
+        const tableNames = (tablesRes.results || []).map((r: any) => String(r.name));
+
         return createSuccessResponse(
           {
-            initialized: inspectRes.ok,
-            ...inspectRes,
+            database: 'connected',
+            migrationReady: Boolean(meta),
+            currentRevision: meta?.revision ?? 1,
+            schemaVersion: meta?.schema_version ?? 2,
+            lastSyncedAt: meta?.last_synced_at ?? null,
+            tablesCount: tableNames.length,
+            tables: tableNames,
           },
           requestId,
           corsHeaders
@@ -227,18 +233,72 @@ export default {
 
       // 5. POST /api/sync - 客户端数据批量推送入库
       if (request.method === 'POST' && url.pathname === '/api/sync') {
-        const payload: SyncPayload = await request.json();
+        let rawBody: string;
+        try {
+          rawBody = await request.text();
+        } catch {
+          return createErrorResponse(400, 'INVALID_BODY', '无法解析请求正文流', requestId, corsHeaders);
+        }
 
-        // 5.1 数据 Schema 严格校验
+        if (rawBody.length > 2 * 1024 * 1024) {
+          return createErrorResponse(
+            413,
+            'PAYLOAD_TOO_LARGE',
+            '请求体超过 2MB 限制，请分批同步数据',
+            requestId,
+            corsHeaders
+          );
+        }
+
+        let payload: SyncPayload;
+        try {
+          payload = JSON.parse(rawBody);
+        } catch {
+          return createErrorResponse(
+            400,
+            'INVALID_JSON',
+            '请求载荷不是合法的 JSON 格式',
+            requestId,
+            corsHeaders
+          );
+        }
+
+        // 5.1 数据 Schema 严格校验与数量防超限
         const validation = validateSyncPayload(payload);
         if (!validation.valid) {
           return createErrorResponse(
             400,
             'VALIDATION_ERROR',
-            '提交的数据结构未通过校验，请检查字段格式',
+            '提交的数据结构未通过校验，请检查字段格式与记录条数',
             requestId,
             corsHeaders,
             validation.errors
+          );
+        }
+
+        // 5.2 乐观并发控制 (OCC) 与版本冲突检测
+        const currentMeta = await env.DB.prepare(
+          "SELECT revision, last_synced_at FROM sync_meta WHERE key = 'global'"
+        ).first<SyncMetaRecord>().catch(() => null);
+
+        const currentRevision = Number(currentMeta?.revision ?? 1);
+
+        if (
+          payload.expectedRevision !== undefined &&
+          payload.expectedRevision !== null &&
+          payload.expectedRevision < currentRevision
+        ) {
+          return createErrorResponse(
+            409,
+            'VERSION_CONFLICT',
+            `云端数据版本已更新 (云端: r${currentRevision}，本地: r${payload.expectedRevision})，请先从云端拉取最新数据合并后再提交`,
+            requestId,
+            corsHeaders,
+            {
+              serverRevision: currentRevision,
+              expectedRevision: payload.expectedRevision,
+              lastSyncedAt: currentMeta?.last_synced_at ?? null,
+            }
           );
         }
 
@@ -672,8 +732,9 @@ export default {
           }
         }
 
-        // 8. App Settings
+        // 8. App Settings (脱敏保护：剥离 API Token 与第三方凭据，严禁明文持久化到数据库)
         if (payload.settings) {
+          const sanitizedSettings = sanitizeSettingsForStorage(payload.settings);
           statements.push(
             env.DB.prepare(
               `INSERT INTO app_settings (key, value_json, updated_at)
@@ -681,7 +742,7 @@ export default {
               ON CONFLICT(key) DO UPDATE SET
                 value_json = excluded.value_json,
                 updated_at = excluded.updated_at`
-            ).bind(JSON.stringify(payload.settings), nowIso)
+            ).bind(JSON.stringify(sanitizedSettings), nowIso)
           );
         }
 
@@ -697,16 +758,20 @@ export default {
           ).bind(nowIso, nowIso)
         );
 
-        // 5.2 批量事务执行 (每批 50 条防超限)
-        const chunkSize = 50;
-        for (let i = 0; i < statements.length; i += chunkSize) {
-          const chunk = statements.slice(i, i + chunkSize);
-          await env.DB.batch(chunk);
+        // 5.3 原子性事务批量执行 (优先整体单批执行，降低部分数据成功、部分失败的断裂风险)
+        if (statements.length <= 100) {
+          await env.DB.batch(statements);
+        } else {
+          const chunkSize = 80;
+          for (let i = 0; i < statements.length; i += chunkSize) {
+            const chunk = statements.slice(i, i + chunkSize);
+            await env.DB.batch(chunk);
+          }
         }
 
         const updatedMeta = await env.DB.prepare("SELECT * FROM sync_meta WHERE key = 'global'").first();
 
-        // 5.3 记录同步审计
+        // 5.4 记录同步审计
         try {
           const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
           const userAgent = request.headers.get('User-Agent') || '';
@@ -738,11 +803,11 @@ export default {
       return createErrorResponse(404, 'NOT_FOUND', '请求的 API 路由端点不存在', requestId, corsHeaders);
     } catch (err: any) {
       console.error(`[${requestId}] Worker Internal Error:`, err);
-      const detail = err?.message || String(err);
+      // 生产环境关闭内部异常堆栈与数据库结构返回，防止敏感信息泄露
       return createErrorResponse(
         500,
-        'DATABASE_ERROR',
-        `数据库操作异常: ${detail}`,
+        'DATABASE_TRANSACTION_FAILED',
+        '数据同步处理异常，事务已安全中止回滚。如持续发生请检查云端服务日志。',
         requestId,
         corsHeaders
       );

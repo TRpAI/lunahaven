@@ -10,7 +10,7 @@ import {
   SocialGiftRecord,
   VehicleProfile,
 } from '../types';
-import { syncToCloudflareWorker } from '../utils/d1Sync';
+import { mergeLedgerDatasets, pullFromCloudflareWorker, syncToCloudflareWorker, SyncConflictError } from '../utils/d1Sync';
 import { processFuelRecords } from '../utils/fuelCalculator';
 import { clearAllLedgerData, loadLedgerData, resetToSampleData, saveLedgerData } from '../utils/storage';
 import {
@@ -557,19 +557,65 @@ export function useLedgerData() {
     setIsSyncing(true);
     setSyncError(null);
     try {
-      await syncToCloudflareWorker(workerUrl, apiToken, data);
+      const res = await syncToCloudflareWorker(workerUrl, apiToken, data);
       const nowStr = new Date().toLocaleString('zh-CN');
-      updateSettings({
+      const serverMeta = res.data?.syncMeta;
+
+      const updatedSettings: AppSettings = {
+        ...data.settings,
         d1Config: {
           ...data.settings.d1Config,
           lastSyncTime: nowStr,
           syncStatus: 'success',
           errorMessage: undefined,
         },
-      });
+      };
+
+      if (serverMeta) {
+        const newSyncMeta = {
+          id: 'global',
+          revision: serverMeta.revision,
+          schemaVersion: serverMeta.schema_version ?? 2,
+          lastSyncedAt: serverMeta.last_synced_at || nowStr,
+          updatedAt: new Date().toISOString(),
+        };
+        setData((prev) => ({
+          ...prev,
+          settings: updatedSettings,
+          syncMeta: newSyncMeta,
+        }));
+        settingsRepository.saveSettings(updatedSettings).catch(console.error);
+        syncMetaRepository.updateSyncMeta(newSyncMeta).catch(console.error);
+      } else {
+        updateSettings(updatedSettings);
+      }
+
       setIsSyncing(false);
       return true;
     } catch (err: any) {
+      if (err instanceof SyncConflictError || err?.code === 'VERSION_CONFLICT') {
+        const conflictNotice = `检测到云端有更高版本数据 (云端版本: r${err.serverRevision ?? '最新'})。已触发乐观并发冲突保护，正在拉取合并...`;
+        setSyncError(conflictNotice);
+        try {
+          const pulled = await pullFromCloudflareWorker(workerUrl, apiToken);
+          if (pulled.data) {
+            const merged = mergeLedgerDatasets(data, pulled.data);
+            merged.syncMeta = {
+              id: 'global',
+              revision: err.serverRevision ?? ((data.syncMeta?.revision ?? 1) + 1),
+              schemaVersion: 2,
+              lastSyncedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+            await importFullData(merged);
+            setIsSyncing(false);
+            return true;
+          }
+        } catch (mergeErr: any) {
+          console.error('Auto merge on conflict failed:', mergeErr);
+        }
+      }
+
       const errMsg = err.message || '同步出错';
       setSyncError(errMsg);
       updateSettings({
@@ -582,7 +628,7 @@ export function useLedgerData() {
       setIsSyncing(false);
       throw err;
     }
-  }, [data, updateSettings]);
+  }, [data, updateSettings, importFullData]);
 
   return {
     data,

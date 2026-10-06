@@ -23,43 +23,55 @@ async function timingSafeEqualAsync(a: string, b: string): Promise<boolean> {
 }
 
 /**
- * 生产环境 CORS 与严格安全响应头配置
+ * 校验来源 Origin 是否在受信任白名单中 (拒绝通配符 *，确保生产环境跨域安全)
+ */
+export function isOriginAllowed(origin: string, env: Env): boolean {
+  if (!origin) return false;
+  const configured = (env.ALLOWED_ORIGIN || '').trim();
+
+  // 严格安全策略：生产环境严禁使用通配符 '*'，仅允许指定前端域名访问
+  if (configured === '*') {
+    console.warn('[Security Warning] ALLOWED_ORIGIN 严禁使用通配符 "*"，已自动拒绝通配，仅采用严格受信默认白名单。');
+  } else if (configured) {
+    const list = configured.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    const originLower = origin.toLowerCase();
+    if (list.includes(originLower)) return true;
+    try {
+      const u = new URL(origin);
+      if (list.includes(u.origin.toLowerCase())) return true;
+    } catch {
+      return false;
+    }
+    return false;
+  }
+
+  // 严格安全默认规则：仅允许受信的前端托管域与本地调试，绝不向任意未知域开放
+  try {
+    const u = new URL(origin);
+    if (
+      u.hostname === 'localhost' ||
+      u.hostname === '127.0.0.1' ||
+      u.hostname.endsWith('.pages.dev') ||
+      u.hostname.endsWith('.run.app')
+    ) {
+      return true;
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * 生产环境 CORS 与严格安全响应头配置 (收紧跨域策略，避免使用通配符 *)
  */
 export function getCorsHeaders(request: Request, env: Env): Record<string, string> {
   const origin = request.headers.get('Origin') || '';
-  const allowed = (env.ALLOWED_ORIGIN || '').trim();
+  const allowed = isOriginAllowed(origin, env);
 
-  let allowOrigin = origin || '*';
-
-  if (allowed && allowed !== '*') {
-    const list = allowed.split(',').map((s) => s.trim().toLowerCase());
-    if (origin && list.includes(origin.toLowerCase())) {
-      allowOrigin = origin;
-    } else if (origin) {
-      try {
-        const u = new URL(origin);
-        if (
-          u.hostname === 'localhost' ||
-          u.hostname === '127.0.0.1' ||
-          u.hostname.endsWith('.run.app') ||
-          u.hostname.endsWith('.pages.dev') ||
-          u.hostname.endsWith('.workers.dev')
-        ) {
-          allowOrigin = origin;
-        } else {
-          allowOrigin = list[0] || origin;
-        }
-      } catch {
-        allowOrigin = list[0] || origin;
-      }
-    } else {
-      allowOrigin = list[0] || '*';
-    }
-  }
-
-  return {
-    'Access-Control-Allow-Origin': allowOrigin,
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  const headers: Record<string, string> = {
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Client-Version',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
@@ -70,6 +82,13 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };
+
+  // 仅对明确校验通过的可信 Origin 返回 CORS 允许标头，严禁使用 '*'
+  if (allowed && origin) {
+    headers['Access-Control-Allow-Origin'] = origin;
+  }
+
+  return headers;
 }
 
 /**

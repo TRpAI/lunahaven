@@ -5,6 +5,10 @@ export interface ValidationError {
   message: string;
 }
 
+// 单次批量同步数量安全阈值限制 (防止超出 Worker CPU / D1 Batch 事务限制)
+export const MAX_ARRAY_LENGTH = 300;
+export const MAX_TOTAL_RECORDS = 800;
+
 export function validateSyncPayload(payload: any): { valid: boolean; errors: ValidationError[] } {
   const errors: ValidationError[] = [];
 
@@ -24,6 +28,36 @@ export function validateSyncPayload(payload: any): { valid: boolean; errors: Val
 
   if (isDangerousObject(payload)) {
     return { valid: false, errors: [{ field: 'security', message: '检测到非法原型属性篡改载荷' }] };
+  }
+
+  // 校验期望版本号 (乐观并发控制 OCC)
+  if (payload.expectedRevision !== undefined && payload.expectedRevision !== null) {
+    if (typeof payload.expectedRevision !== 'number' || payload.expectedRevision < 0) {
+      errors.push({ field: 'expectedRevision', message: 'expectedRevision 必须为非负整数版本号' });
+    }
+  }
+
+  // 统计总记录条数
+  let totalRecords = 0;
+  const countArray = (arr: any, name: string) => {
+    if (Array.isArray(arr)) {
+      if (arr.length > MAX_ARRAY_LENGTH) {
+        errors.push({ field: name, message: `${name} 数量超过单表最大限制 (${MAX_ARRAY_LENGTH}条)` });
+      }
+      totalRecords += arr.length;
+    }
+  };
+
+  countArray(payload.salaries, 'salaries');
+  countArray(payload.overtimes, 'overtimes');
+  countArray(payload.gifts, 'gifts');
+  countArray(payload.vehicles, 'vehicles');
+  countArray(payload.fuels, 'fuels');
+  countArray(payload.maintenances, 'maintenances');
+  countArray(payload.expenses, 'expenses');
+
+  if (totalRecords > MAX_TOTAL_RECORDS) {
+    errors.push({ field: 'totalRecords', message: `单次批量提交记录总数 (${totalRecords}) 超过系统安全上限 (${MAX_TOTAL_RECORDS}条)，请分批同步` });
   }
 
   // 1. 校验薪资 (Salaries)
@@ -154,6 +188,41 @@ export function validateSyncPayload(payload: any): { valid: boolean; errors: Val
     valid: errors.length === 0,
     errors,
   };
+}
+
+/**
+ * 生产环境敏感数据过滤与脱敏：
+ * 绝不在普通 D1 数据库表中存储 API Token、第三方授权 Token、2FA 密钥等敏感凭据
+ * 统一依托 Cloudflare Secrets / 客户端本地安全加密存储
+ */
+export function sanitizeSettingsForStorage(settings: any): any {
+  if (!settings || typeof settings !== 'object') return settings;
+  try {
+    const copy = JSON.parse(JSON.stringify(settings));
+    if (copy.d1Config) {
+      // 避免 D1 API Token 被持久化至数据库
+      copy.d1Config.apiToken = '';
+    }
+    if (copy.oneDriveConfig) {
+      // 避免微软 OAuth 访问令牌与刷新令牌被持久化至数据库
+      copy.oneDriveConfig.accessToken = '';
+      copy.oneDriveConfig.refreshToken = '';
+    }
+    // 敏感双重验证 TOTP 密钥与备用恢复码严禁持久化至云端明文表
+    if (copy.twoFactorSecret) {
+      copy.twoFactorSecret = '';
+    }
+    if (Array.isArray(copy.twoFactorBackupCodes)) {
+      copy.twoFactorBackupCodes = [];
+    }
+    // 生物识别凭据 ID 仅保留本地硬件关联
+    if (copy.biometricCredentialId) {
+      copy.biometricCredentialId = '';
+    }
+    return copy;
+  } catch {
+    return settings;
+  }
 }
 
 /**

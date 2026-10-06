@@ -9,8 +9,9 @@ database_name = "qiyue_ledger_db"
 database_id = "3652e1ff-356f-451e-b47b-ab4bdca3dad5"
 
 # 环境变量配置
-# 生产环境 API 访问 Token 建议通过命令行加密存储：
+# 生产环境 API 访问 Token 必须通过命令行安全密文存储：
 # wrangler secret put API_TOKEN
 [vars]
-# 允许跨域的前端来源。设为 "*" 可允许任意合法来源（依赖 API_TOKEN 严格鉴权），亦可指定如 "https://qiyuezb.pages.dev"
-ALLOWED_ORIGIN = "*"
+# 生产环境跨域白名单（多个以英文逗号分隔，严禁使用通配符 "*"）
+# 如需指定自有 Pages 域名或自定义域名，请配置如下：
+ALLOWED_ORIGIN = "https://qiyue.pages.dev,http://localhost:3000"

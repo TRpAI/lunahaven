@@ -22,6 +22,14 @@ export interface Env {
   ALLOWED_ORIGIN?: string;
 }
 
+export interface SyncMetaRecord {
+  key: string;
+  revision: number;
+  schema_version: number;
+  last_synced_at: string | null;
+  updated_at?: string;
+}
+
 export interface SyncPayload {
   format?: string;
   version?: number;

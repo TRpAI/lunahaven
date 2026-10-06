@@ -1,4 +1,6 @@
-import { LedgerFullData } from '../types';
+import { FuelRecord, LedgerFullData } from '../types';
+import { sanitizeSettingsForExport } from './exportImport';
+import { processFuelRecords } from './fuelCalculator';
 
 export const CLOUDFLARE_D1_SCHEMA_SQL = `-- ==========================================
 -- 栖月账本 (Qiyue Ledger) Cloudflare D1 生产 Schema
@@ -388,21 +390,33 @@ export async function checkCloudflareHealth(workerUrl: string): Promise<{
   }
 }
 
-export interface TableInspectionDetail {
-  name: string;
-  exists: boolean;
-  columnCount: number;
-  columns: string[];
-  missingColumns: string[];
+export class SyncConflictError extends Error {
+  code = 'VERSION_CONFLICT';
+  serverRevision?: number;
+  expectedRevision?: number;
+  lastSyncedAt?: string | null;
+
+  constructor(message: string, details?: any) {
+    super(message);
+    this.name = 'SyncConflictError';
+    if (details) {
+      this.serverRevision = details.serverRevision;
+      this.expectedRevision = details.expectedRevision;
+      this.lastSyncedAt = details.lastSyncedAt;
+    }
+  }
 }
 
-export interface SchemaInspectionResult {
+export interface D1DatabaseStatusResult {
   ok: boolean;
   status: string;
-  tablesChecked: number;
-  tableDetails: TableInspectionDetail[];
-  missingTablesCreated: string[];
-  missingColumnsAdded: string[];
+  database: string;
+  migrationReady: boolean;
+  currentRevision: number;
+  schemaVersion: number;
+  lastSyncedAt: string | null;
+  tablesCount: number;
+  tables: string[];
   message: string;
 }
 
@@ -422,58 +436,17 @@ export function toBoolean(val: any, defaultVal = false): boolean {
 }
 
 /**
- * 远程一键调用 Worker 执行 D1 数据库结构全量初始化与修复
- */
-export async function initCloudflareD1Database(
-  workerUrl: string,
-  apiToken: string
-): Promise<SchemaInspectionResult & { initialized: boolean; message: string }> {
-  const cleanUrl = sanitizeWorkerUrl(workerUrl);
-  const targetUrl = `${cleanUrl}/api/init`;
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'X-Client-Version': '2.2.0',
-  };
-  if (apiToken && apiToken.trim()) {
-    headers['Authorization'] = `Bearer ${apiToken.trim()}`;
-  }
-
-  const res = await fetchWithTimeoutAndRetry(targetUrl, {
-    method: 'POST',
-    headers,
-  }, 15000, 1);
-
-  const json = await res.json().catch(() => null);
-  if (!res.ok || !json?.success) {
-    const errorMsg = json?.error?.message || json?.error || `HTTP ${res.status}`;
-    throw new Error(errorMsg);
-  }
-
-  return json.data || {
-    initialized: true,
-    ok: true,
-    status: 'healthy',
-    tablesChecked: 10,
-    tableDetails: [],
-    missingTablesCreated: [],
-    missingColumnsAdded: [],
-    message: '初始化成功',
-  };
-}
-
-/**
- * 远程探测 D1 数据库 10 张表及关键字段完整性
+ * 远程探测 D1 数据库迁移及表结构只读状态 (不执行动态 DDL)
  */
 export async function inspectCloudflareD1Database(
   workerUrl: string,
   apiToken: string
-): Promise<SchemaInspectionResult> {
+): Promise<D1DatabaseStatusResult> {
   const cleanUrl = sanitizeWorkerUrl(workerUrl);
-  const targetUrl = `${cleanUrl}/api/schema/inspect`;
+  const targetUrl = `${cleanUrl}/api/schema/status`;
 
   const headers: Record<string, string> = {
-    'X-Client-Version': '2.2.0',
+    'X-Client-Version': '2.3.0',
   };
   if (apiToken && apiToken.trim()) {
     headers['Authorization'] = `Bearer ${apiToken.trim()}`;
@@ -490,7 +463,162 @@ export async function inspectCloudflareD1Database(
     throw new Error(errorMsg);
   }
 
-  return json.data;
+  const data = json.data || {};
+  return {
+    ok: true,
+    status: data.migrationReady ? 'healthy' : 'pending_migration',
+    database: data.database || 'connected',
+    migrationReady: Boolean(data.migrationReady),
+    currentRevision: data.currentRevision ?? 1,
+    schemaVersion: data.schemaVersion ?? 2,
+    lastSyncedAt: data.lastSyncedAt ?? null,
+    tablesCount: data.tablesCount ?? (data.tables || []).length,
+    tables: data.tables || [],
+    message: data.migrationReady
+      ? `D1 数据库结构就绪：共核查到 ${data.tablesCount ?? 10} 张业务表，当前版本 r${data.currentRevision ?? 1}`
+      : 'D1 数据库已连接，但尚未运行迁移。请通过 wrangler d1 migrations apply 应用迁移文件。',
+  };
+}
+
+/**
+ * 客户端与云端双向智能合并算法 (基于 updatedAt 时间戳的 Last-Write-Wins 乐观并发解决，并智能保全本地关键标记)
+ */
+export function mergeLedgerDatasets(
+  local: LedgerFullData,
+  remote: Partial<LedgerFullData>
+): LedgerFullData {
+  const mergeEntities = <T extends { id: string; updatedAt?: string; createdAt?: string }>(
+    localList: T[] = [],
+    remoteList: T[] = []
+  ): T[] => {
+    const localMap = new Map(localList.map((item) => [item.id, item]));
+    const seen = new Set<string>();
+    const result: T[] = [];
+
+    for (const remoteItem of remoteList) {
+      seen.add(remoteItem.id);
+      const localItem = localMap.get(remoteItem.id);
+      if (!localItem) {
+        result.push(remoteItem);
+      } else {
+        const localTime = new Date(localItem.updatedAt || localItem.createdAt || 0).getTime();
+        const remoteTime = new Date(remoteItem.updatedAt || remoteItem.createdAt || 0).getTime();
+        result.push(localTime >= remoteTime ? { ...remoteItem, ...localItem } : { ...localItem, ...remoteItem });
+      }
+    }
+
+    for (const localItem of localList) {
+      if (!seen.has(localItem.id)) {
+        result.push(localItem);
+      }
+    }
+
+    return result;
+  };
+
+  // 1. 合并 Fuels：优先保全本地真实的黄灯报警与漏记标志
+  const localFuelMap = new Map((local.fuels || []).map((f) => [f.id, f]));
+  const seenFuelIds = new Set<string>();
+  const mergedFuels: FuelRecord[] = ((remote.fuels || []) as FuelRecord[]).map((rf) => {
+    seenFuelIds.add(rf.id);
+    const lf = localFuelMap.get(rf.id);
+    if (lf) {
+      const localTime = new Date(lf.updatedAt || lf.createdAt || 0).getTime();
+      const remoteTime = new Date(rf.updatedAt || rf.createdAt || 0).getTime();
+      const base = localTime >= remoteTime ? { ...rf, ...lf } : { ...lf, ...rf };
+      return {
+        ...base,
+        isWarningLightOn: Boolean(base.isWarningLightOn || lf.isWarningLightOn),
+        isMissedPrevious: Boolean(base.isMissedPrevious || lf.isMissedPrevious),
+        isFullTank: base.isFullTank !== undefined ? base.isFullTank : (lf.isFullTank ?? true),
+      };
+    }
+    return rf;
+  });
+  for (const lf of local.fuels || []) {
+    if (!seenFuelIds.has(lf.id)) {
+      mergedFuels.push(lf);
+    }
+  }
+  const processedFuels = processFuelRecords(mergedFuels);
+
+  // 2. 合并 Expenses：保全 direction (资金流向)
+  const localExpMap = new Map((local.expenses || []).map((e) => [e.id, e]));
+  const seenExpIds = new Set<string>();
+  const mergedExpenses = ((remote.expenses || []) as any[]).map((re) => {
+    seenExpIds.add(re.id);
+    const le = localExpMap.get(re.id);
+    if (le) {
+      const localTime = new Date(le.updatedAt || le.createdAt || 0).getTime();
+      const remoteTime = new Date(re.updatedAt || re.createdAt || 0).getTime();
+      const base = localTime >= remoteTime ? { ...re, ...le } : { ...le, ...re };
+      return {
+        ...base,
+        direction: base.direction || le.direction || 'out',
+      };
+    }
+    return re;
+  });
+  for (const le of local.expenses || []) {
+    if (!seenExpIds.has(le.id)) {
+      mergedExpenses.push(le);
+    }
+  }
+
+  // 3. 合并 Vehicles
+  const localVehMap = new Map((local.vehicles || []).map((v) => [v.id, v]));
+  const seenVehIds = new Set<string>();
+  const mergedVehicles = ((remote.vehicles || []) as any[]).map((rv) => {
+    seenVehIds.add(rv.id);
+    const lv = localVehMap.get(rv.id);
+    if (lv) {
+      const localTime = new Date(lv.updatedAt || lv.createdAt || 0).getTime();
+      const remoteTime = new Date(rv.updatedAt || rv.createdAt || 0).getTime();
+      const base = localTime >= remoteTime ? { ...rv, ...lv } : { ...lv, ...rv };
+      return {
+        ...base,
+        currentOdometer: Math.max(base.currentOdometer || 0, lv.currentOdometer || 0, rv.currentOdometer || 0),
+      };
+    }
+    return rv;
+  });
+  for (const lv of local.vehicles || []) {
+    if (!seenVehIds.has(lv.id)) {
+      mergedVehicles.push(lv);
+    }
+  }
+
+  // 4. 通用实体合并 (Salaries, Overtimes, Gifts, Maintenances)
+  const mergedSalaries = mergeEntities(local.salaries || [], remote.salaries || []);
+  const mergedOvertimes = mergeEntities(local.overtimes || [], remote.overtimes || []);
+  const mergedGifts = mergeEntities(local.gifts || [], remote.gifts || []);
+  const mergedMaintenances = mergeEntities(local.maintenances || [], remote.maintenances || []);
+
+  const mergedSettings = {
+    ...local.settings,
+    ...(remote.settings || {}),
+    // 保护本地敏感配置不被云端空值覆盖
+    d1Config: {
+      ...local.settings.d1Config,
+      ...(remote.settings?.d1Config || {}),
+      workerUrl: local.settings.d1Config.workerUrl || remote.settings?.d1Config?.workerUrl || '',
+      apiToken: local.settings.d1Config.apiToken || remote.settings?.d1Config?.apiToken || '',
+    },
+  };
+
+  return {
+    ...local,
+    salaries: mergedSalaries,
+    overtimes: mergedOvertimes,
+    expenses: mergedExpenses,
+    gifts: mergedGifts,
+    vehicles: mergedVehicles,
+    fuels: processedFuels,
+    maintenances: mergedMaintenances,
+    settings: mergedSettings,
+    syncMeta: remote.syncMeta || local.syncMeta,
+    exportedAt: new Date().toISOString(),
+  };
 }
 
 /**
@@ -623,10 +751,11 @@ export function generateCloudflareD1SqlDump(data: LedgerFullData): string {
     );
   }
 
-  // 8. App Settings
+  // 8. App Settings (安全脱敏：自动剥离 API Token、第三方授权 Token 及 2FA 凭据，严禁明文导出)
   if (data.settings) {
+    const sanitizedSettings = sanitizeSettingsForExport(data.settings);
     lines.push(
-      `INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES ('app_settings', ${esc(JSON.stringify(data.settings))}, ${esc(new Date().toISOString())});`
+      `INSERT OR REPLACE INTO app_settings (key, value_json, updated_at) VALUES ('app_settings', ${esc(JSON.stringify(sanitizedSettings))}, ${esc(new Date().toISOString())});`
     );
   }
 
@@ -661,8 +790,11 @@ export async function syncToCloudflareWorker(
     headers['Authorization'] = `Bearer ${apiToken.trim()}`;
   }
 
+  const currentRevision = data.syncMeta?.revision ?? 1;
+
   const payload = {
     version: 2,
+    expectedRevision: currentRevision,
     salaries: data.salaries || [],
     overtimes: data.overtimes || [],
     gifts: data.gifts || [],
@@ -681,6 +813,11 @@ export async function syncToCloudflareWorker(
   }, 15000, 1);
 
   const json = await res.json().catch(() => null);
+
+  if (res.status === 409 || json?.error?.code === 'VERSION_CONFLICT') {
+    const conflictMsg = json?.error?.message || '云端存在较新版本的数据，已触发乐观并发冲突保护。';
+    throw new SyncConflictError(conflictMsg, json?.error?.details);
+  }
 
   if (!res.ok || !json?.success) {
     const errorMsg = json?.error?.message || json?.error || `HTTP ${res.status}`;

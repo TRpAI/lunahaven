@@ -117,8 +117,6 @@ CREATE TABLE IF NOT EXISTS fuel_records (
     unit_price REAL NOT NULL,           -- 单价
     total_cost REAL NOT NULL,           -- 总金额
     is_full_tank INTEGER DEFAULT 1,     -- 1:加满, 0:未加满
-    is_warning_light_on INTEGER DEFAULT 0, -- 1:亮灯报警, 0:正常
-    is_missed_previous INTEGER DEFAULT 0,  -- 1:漏记补能, 0:正常
     station TEXT,
     fuel_type TEXT,
     calculated_fuel_economy REAL,       -- 百公里油耗

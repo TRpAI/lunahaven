@@ -243,7 +243,36 @@ export function exportMaintenancesToCsv(maintenances: MaintenanceRecord[]): stri
 }
 
 /**
- * 导出版本化 JSON 备份 (完整导出包含综合开支在内的全业务资产)
+ * 敏感数据安全脱敏：导出备份文件时剥离 API Token、第三方授权 Token 及 2FA 密钥凭据
+ */
+export function sanitizeSettingsForExport(settings: any): any {
+  if (!settings || typeof settings !== 'object') return settings;
+  try {
+    const copy = JSON.parse(JSON.stringify(settings));
+    if (copy.d1Config) {
+      copy.d1Config.apiToken = '';
+    }
+    if (copy.oneDriveConfig) {
+      copy.oneDriveConfig.accessToken = '';
+      copy.oneDriveConfig.refreshToken = '';
+    }
+    if (copy.twoFactorSecret) {
+      copy.twoFactorSecret = '';
+    }
+    if (Array.isArray(copy.twoFactorBackupCodes)) {
+      copy.twoFactorBackupCodes = [];
+    }
+    if (copy.biometricCredentialId) {
+      copy.biometricCredentialId = '';
+    }
+    return copy;
+  } catch {
+    return settings;
+  }
+}
+
+/**
+ * 导出版本化 JSON 备份 (完整导出包含综合开支在内的全业务资产，敏感凭据自动脱敏)
  */
 export function exportVersionedJson(data: LedgerFullData): string {
   const payload = {
@@ -259,7 +288,7 @@ export function exportVersionedJson(data: LedgerFullData): string {
       vehicles: data.vehicles || [],
       fuels: data.fuels || [],
       maintenances: data.maintenances || [],
-      settings: data.settings,
+      settings: sanitizeSettingsForExport(data.settings),
       syncMeta: data.syncMeta,
     },
   };
