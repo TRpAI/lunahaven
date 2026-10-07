@@ -39,6 +39,7 @@ export interface OvertimeTimeDetails {
   minutes: number;
   formattedSpan: string;
   isOvernight: boolean;
+  isDeepNight?: boolean;
 }
 
 export function getOvertimeTimeDetails(startTime: string, endTime: string): OvertimeTimeDetails {
@@ -52,8 +53,10 @@ export function getOvertimeTimeDetails(startTime: string, endTime: string): Over
   const eh = parseInt(ehStr, 10);
   const em = parseInt(emStr, 10);
 
+  const isDeepNight = isDeepNightShift(startTime, endTime);
+
   if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) {
-    return { hours: 0, minutes: 0, formattedSpan: '0 小时', isOvernight: false };
+    return { hours: 0, minutes: 0, formattedSpan: '0 小时', isOvernight: false, isDeepNight: false };
   }
 
   const startTotalMinutes = sh * 60 + sm;
@@ -67,7 +70,7 @@ export function getOvertimeTimeDetails(startTime: string, endTime: string): Over
 
   const diffMinutes = endTotalMinutes - startTotalMinutes;
   if (diffMinutes <= 0) {
-    return { hours: 0, minutes: 0, formattedSpan: '0 分钟', isOvernight: false };
+    return { hours: 0, minutes: 0, formattedSpan: '0 分钟', isOvernight: false, isDeepNight: false };
   }
 
   const h = Math.floor(diffMinutes / 60);
@@ -75,7 +78,59 @@ export function getOvertimeTimeDetails(startTime: string, endTime: string): Over
   const hours = Math.round((diffMinutes / 60) * 10) / 10;
   const formattedSpan = m > 0 ? `${h}小时${m}分` : `${h}小时`;
 
-  return { hours, minutes: diffMinutes, formattedSpan, isOvernight };
+  return { hours, minutes: diffMinutes, formattedSpan, isOvernight, isDeepNight };
+}
+
+/**
+ * 判断班次是否属于晚间深加班 / 长夜班：
+ * 1. 跨午夜班次 (例如 22:00~02:00, 20:00~08:00, 20:00~00:00)
+ * 2. 晚间深加班：工作至 22:00、23:00、00:00 或更晚 (如 20:00~00:00, 19:00~23:00, 18:00~22:30)
+ * 3. 晚间 19:00 之后开始且持续至深夜 (>=22:00)
+ */
+export function isDeepNightShift(startTime: string, endTime: string): boolean {
+  if (!startTime || !endTime) return false;
+  const [shStr, smStr] = startTime.split(':');
+  const [ehStr, emStr] = endTime.split(':');
+  const sh = parseInt(shStr, 10);
+  const sm = parseInt(smStr, 10);
+  const eh = parseInt(ehStr, 10);
+  const em = parseInt(emStr, 10);
+
+  if (isNaN(sh) || isNaN(sm) || isNaN(eh) || isNaN(em)) return false;
+
+  const startTotalMinutes = sh * 60 + sm;
+  let endTotalMinutes = eh * 60 + em;
+
+  // 1. 跨午夜班次 (例如 22:00~02:00, 20:00~08:00, 20:00~00:00) 必然属于长夜班
+  const isOvernight = endTotalMinutes <= startTotalMinutes;
+  if (isOvernight && (endTotalMinutes > 0 || eh === 0)) return true;
+
+  // 2. 晚间深加班：晚上开始 (>=18:00) 且工作至 22:00 及以后或次日 00:00
+  if (sh >= 18 && (endTotalMinutes >= 22 * 60 || eh === 0)) return true;
+
+  // 3. 任何工作至 22:30 或 23:00 之后的深晚加班
+  if (endTotalMinutes >= 22 * 60 + 30 || (eh === 0 && em === 0)) return true;
+
+  return false;
+}
+
+/**
+ * 判断加班记录是否属于长夜班（晚间深加班也属于长夜班，享受长夜班每日补贴）
+ */
+export function isNightShiftRecord(o: Partial<OvertimeRecord> | null | undefined): boolean {
+  if (!o) return false;
+  if (o.isNightShift) return true;
+  if (o.startTime && o.endTime && isDeepNightShift(o.startTime, o.endTime)) return true;
+  if (
+    o.reason &&
+    (o.reason.includes('晚间深加班') ||
+      o.reason.includes('深加班') ||
+      o.reason.includes('长夜班') ||
+      o.reason.includes('夜班'))
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function calculateOvertimeDuration(startTime: string, endTime: string): number {
@@ -101,7 +156,7 @@ export const OVERTIME_SHIFT_PRESETS = [
     hours: 4,
     type: 'workday' as const,
     multiplier: 1.5,
-    isNightShift: false,
+    isNightShift: true, // 晚间深加班属于长夜班，享受长夜班补贴
   },
   {
     label: '周末全天(8h)',
@@ -338,7 +393,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     const paidOvertimes = overtimes.filter((o) => o.settlementType === 'paid');
     const totalPaidOvertimeAmount = paidOvertimes.reduce((sum, o) => sum + (o.estimatedPay || 0), 0);
 
-    const nightShiftOvertimes = overtimes.filter((o) => o.isNightShift);
+    const nightShiftOvertimes = overtimes.filter(isNightShiftRecord);
     const totalNightShiftDays = nightShiftOvertimes.length;
     const totalNightShiftSubsidy = nightShiftOvertimes.reduce((sum, o) => sum + (Number(o.nightShiftSubsidy) || 50), 0);
 
@@ -473,7 +528,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     p30 = Math.round(p30 * 100) / 100;
     const total = Math.round((p15 + p20 + p30) * 100) / 100;
 
-    const nightShiftOts = monthPaidOts.filter((o) => o.isNightShift);
+    const nightShiftOts = monthPaidOts.filter(isNightShiftRecord);
     const nightDays = nightShiftOts.length;
     const nightSubsidyTotal = nightShiftOts.reduce((sum, o) => sum + (Number(o.nightShiftSubsidy) || 50), 0);
 
@@ -689,7 +744,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     }
     const otPay = Math.round((p15 + p20 + p30) * 100) / 100;
 
-    const nightShiftOts = monthPaidOts.filter((o) => o.isNightShift);
+    const nightShiftOts = monthPaidOts.filter(isNightShiftRecord);
     const nightDays = nightShiftOts.length;
     const nightSubsidyTotal = nightShiftOts.reduce((sum, o) => sum + (Number(o.nightShiftSubsidy) || 50), 0);
 
@@ -916,6 +971,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
 
   const handleOpenEditOvertime = (o: OvertimeRecord) => {
     setEditingOvertimeId(o.id);
+    const isNight = isNightShiftRecord(o);
     setOvertimeForm({
       date: o.date,
       type: o.type,
@@ -925,8 +981,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       multiplier: o.multiplier,
       settlementType: o.settlementType,
       hourlyRate: o.hourlyRate || Number((defaultBaseSalary / 21.75 / 8).toFixed(2)),
-      isNightShift: Boolean(o.isNightShift),
-      nightShiftSubsidy: o.nightShiftSubsidy !== undefined ? o.nightShiftSubsidy : 50,
+      isNightShift: isNight,
+      nightShiftSubsidy: o.nightShiftSubsidy !== undefined && o.nightShiftSubsidy > 0 ? o.nightShiftSubsidy : (isNight ? 50 : 0),
       reason: o.reason || '',
       approver: o.approver || '',
       notes: o.notes || '',
@@ -941,6 +997,12 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
     const mult = Number(overtimeForm.multiplier) || 1.5;
     const estPay = Number((duration * rate * mult).toFixed(2));
 
+    const isNight = Boolean(
+      overtimeForm.isNightShift ||
+      isDeepNightShift(overtimeForm.startTime, overtimeForm.endTime) ||
+      (overtimeForm.reason && (overtimeForm.reason.includes('晚间深加班') || overtimeForm.reason.includes('深加班') || overtimeForm.reason.includes('长夜班')))
+    );
+
     const newRecord: OvertimeRecord = {
       id: editingOvertimeId || `ot-${Date.now()}`,
       date: overtimeForm.date,
@@ -952,8 +1014,8 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
       settlementType: overtimeForm.settlementType,
       hourlyRate: rate,
       estimatedPay: estPay,
-      isNightShift: Boolean(overtimeForm.isNightShift),
-      nightShiftSubsidy: overtimeForm.isNightShift ? Number(overtimeForm.nightShiftSubsidy) || 0 : 0,
+      isNightShift: isNight,
+      nightShiftSubsidy: isNight ? (Number(overtimeForm.nightShiftSubsidy) || 50) : 0,
       compTimeHoursUsed: editingOvertimeId
         ? overtimes.find((o) => o.id === editingOvertimeId)?.compTimeHoursUsed || 0
         : 0,
@@ -1506,10 +1568,10 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             <span className="px-2 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-[10px]">
                               {o.type === 'workday' ? '工作日延时 (1.5x)' : o.type === 'weekend' ? '周末加班 (2.0x)' : '法定节假日 (3.0x)'}
                             </span>
-                            {o.isNightShift && (
+                            {isNightShiftRecord(o) && (
                               <span className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-200/60 dark:border-indigo-800/60 flex items-center gap-1">
                                 <Moon className="w-3 h-3 text-indigo-500" />
-                                <span>长夜班 (+¥{o.nightShiftSubsidy !== undefined ? o.nightShiftSubsidy : 50}补贴)</span>
+                                <span>长夜班 (+¥{o.nightShiftSubsidy !== undefined && o.nightShiftSubsidy > 0 ? o.nightShiftSubsidy : 50}补贴)</span>
                               </span>
                             )}
                             {o.settlementType === 'comp_time' && (
@@ -1599,14 +1661,14 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                          {o.isNightShift ? (
+                          {isNightShiftRecord(o) ? (
                             <div className="p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/60 flex items-center justify-between">
                               <span className="text-zinc-600 dark:text-zinc-400 flex items-center gap-1.5 font-medium">
                                 <Moon className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                                 <span>长夜班补贴标准</span>
                               </span>
                               <span className="font-bold text-indigo-700 dark:text-indigo-300 font-mono">
-                                +¥{Number(o.nightShiftSubsidy !== undefined ? o.nightShiftSubsidy : 50).toFixed(2)}/天
+                                +¥{Number(o.nightShiftSubsidy !== undefined && o.nightShiftSubsidy > 0 ? o.nightShiftSubsidy : 50).toFixed(2)}/天
                               </span>
                             </div>
                           ) : (
@@ -1990,7 +2052,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                         <label className="block text-[10px] text-zinc-400 mb-0.5">工时(小时)</label>
                         <input
                           type="number"
-                          step="0.5"
+                          step="any"
                           min="0"
                           value={salaryForm.overtime15Hours || ''}
                           placeholder="0"
@@ -2024,7 +2086,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                         <label className="block text-[10px] text-zinc-400 mb-0.5">工时(小时)</label>
                         <input
                           type="number"
-                          step="0.5"
+                          step="any"
                           min="0"
                           value={salaryForm.overtime20Hours || ''}
                           placeholder="0"
@@ -2058,7 +2120,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                         <label className="block text-[10px] text-zinc-400 mb-0.5">工时(小时)</label>
                         <input
                           type="number"
-                          step="0.5"
+                          step="any"
                           min="0"
                           value={salaryForm.overtime30Hours || ''}
                           placeholder="0"
@@ -2128,7 +2190,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                       <input
                         type="number"
                         min="0"
-                        step="1"
+                        step="any"
                         value={salaryForm.nightShiftDays || ''}
                         placeholder="如: 8"
                         onChange={(e) =>
@@ -2142,7 +2204,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                       <input
                         type="number"
                         min="0"
-                        step="5"
+                        step="any"
                         value={salaryForm.nightShiftRate || ''}
                         placeholder="如: 50"
                         onChange={(e) =>
@@ -2175,7 +2237,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     <input
                       type="number"
                       min="0"
-                      step="10"
+                      step="any"
                       value={salaryForm.fullAttendancePay || ''}
                       placeholder="如: 200 / 300"
                       onChange={(e) => handleFullAttendanceChange(Number(e.target.value))}
@@ -2189,7 +2251,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                     <input
                       type="number"
                       min="0"
-                      step="10"
+                      step="any"
                       value={salaryForm.baseAllowance || ''}
                       placeholder="如: 500"
                       onChange={(e) => handleBaseAllowanceChange(Number(e.target.value))}
@@ -2222,7 +2284,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             <input
                               type="number"
                               min="0"
-                              step="10"
+                              step="any"
                               value={item.amount || ''}
                               onChange={(e) =>
                                 handleUpdateCustomAllowance(item.id, item.name, Number(e.target.value))
@@ -2429,7 +2491,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                             <input
                               type="number"
                               min="0"
-                              step="5"
+                              step="any"
                               value={item.amount || ''}
                               onChange={(e) =>
                                 handleUpdateCustomDeduction(item.id, item.name, Number(e.target.value))
@@ -2491,7 +2553,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                   <input
                     type="number"
                     min="0"
-                    step="500"
+                    step="any"
                     value={salaryForm.specialDeductions}
                     onChange={(e) => setSalaryForm({ ...salaryForm, specialDeductions: Number(e.target.value) })}
                     className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
@@ -2504,7 +2566,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                   <input
                     type="number"
                     min="0"
-                    step="10"
+                    step="any"
                     value={salaryForm.preTaxDeduction}
                     onChange={(e) => setSalaryForm({ ...salaryForm, preTaxDeduction: Number(e.target.value) })}
                     className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
@@ -2515,7 +2577,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                   <input
                     type="number"
                     min="0"
-                    step="10"
+                    step="any"
                     value={salaryForm.otherBonus}
                     onChange={(e) => setSalaryForm({ ...salaryForm, otherBonus: Number(e.target.value) })}
                     className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
@@ -2658,10 +2720,20 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                       onChange={(e) => {
                         const newStart = e.target.value;
                         const details = getOvertimeTimeDetails(newStart, overtimeForm.endTime);
+                        const isDeep = isDeepNightShift(newStart, overtimeForm.endTime);
                         setOvertimeForm({
                           ...overtimeForm,
                           startTime: newStart,
                           durationHours: details.hours,
+                          ...(isDeep
+                            ? {
+                                isNightShift: true,
+                                nightShiftSubsidy:
+                                  overtimeForm.nightShiftSubsidy && overtimeForm.nightShiftSubsidy > 0
+                                    ? overtimeForm.nightShiftSubsidy
+                                    : 50,
+                              }
+                            : {}),
                         });
                       }}
                       className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
@@ -2678,10 +2750,20 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                       onChange={(e) => {
                         const newEnd = e.target.value;
                         const details = getOvertimeTimeDetails(overtimeForm.startTime, newEnd);
+                        const isDeep = isDeepNightShift(overtimeForm.startTime, newEnd);
                         setOvertimeForm({
                           ...overtimeForm,
                           endTime: newEnd,
                           durationHours: details.hours,
+                          ...(isDeep
+                            ? {
+                                isNightShift: true,
+                                nightShiftSubsidy:
+                                  overtimeForm.nightShiftSubsidy && overtimeForm.nightShiftSubsidy > 0
+                                    ? overtimeForm.nightShiftSubsidy
+                                    : 50,
+                              }
+                            : {}),
                         });
                       }}
                       className="w-full min-w-0 block px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
@@ -2834,7 +2916,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
                   <input
                     type="number"
-                    step="0.1"
+                    step="any"
                     min="0"
                     required
                     value={overtimeForm.durationHours}
@@ -2921,7 +3003,11 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                   </label>
                   {overtimeForm.isNightShift && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
-                      已启用长夜班补贴
+                      {isDeepNightShift(overtimeForm.startTime, overtimeForm.endTime) ||
+                      (overtimeForm.reason &&
+                        (overtimeForm.reason.includes('晚间深加班') || overtimeForm.reason.includes('深加班')))
+                        ? '🌙 晚间深加班已自动识别为长夜班'
+                        : '已启用长夜班补贴'}
                     </span>
                   )}
                 </div>
@@ -2936,7 +3022,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 font-mono text-xs">¥</span>
                         <input
                           type="number"
-                          step="1"
+                          step="any"
                           min="0"
                           value={overtimeForm.nightShiftSubsidy}
                           onChange={(e) =>
@@ -2951,7 +3037,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                       </div>
                     </div>
                     <div className="text-[11px] text-indigo-700 dark:text-indigo-300 bg-white/70 dark:bg-zinc-900/70 p-2.5 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
-                      💡 此班次计入长夜班天数，在工资条中可<strong>一键导入当月长夜班天数与总补贴</strong>（当前单班补贴: +¥{Number(overtimeForm.nightShiftSubsidy) || 0}）。
+                      💡 晚间深加班属于长夜班，单班补贴金额可自由输入（当前单班补贴: +¥{Number(overtimeForm.nightShiftSubsidy) || 0}）。在工资条中可<strong>一键导入当月长夜班天数与总补贴</strong>。
                     </div>
                   </div>
                 )}
@@ -2963,7 +3049,23 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                   type="text"
                   placeholder="如: V3.0核心系统上线冲刺联调"
                   value={overtimeForm.reason}
-                  onChange={(e) => setOvertimeForm({ ...overtimeForm, reason: e.target.value })}
+                  onChange={(e) => {
+                    const r = e.target.value;
+                    const isDeep = r.includes('晚间深加班') || r.includes('深加班') || r.includes('长夜班');
+                    setOvertimeForm({
+                      ...overtimeForm,
+                      reason: r,
+                      ...(isDeep
+                        ? {
+                            isNightShift: true,
+                            nightShiftSubsidy:
+                              overtimeForm.nightShiftSubsidy && overtimeForm.nightShiftSubsidy > 0
+                                ? overtimeForm.nightShiftSubsidy
+                                : 50,
+                          }
+                        : {}),
+                    });
+                  }}
                   className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100"
                 />
               </div>

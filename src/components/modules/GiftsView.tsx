@@ -555,7 +555,8 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                   <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">礼金金额 (元)</label>
                   <input
                     type="number"
-                    step="100"
+                    step="0.01"
+                    min="0"
                     required
                     value={formData.amount}
                     onChange={(e) => setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })}
@@ -687,7 +688,8 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                       <label className="block text-zinc-600 dark:text-zinc-400 font-medium mb-1">已回礼金额 (元)</label>
                       <input
                         type="number"
-                        step="100"
+                        step="0.01"
+                        min="0"
                         value={formData.returnAmount}
                         onChange={(e) => setFormData({ ...formData, returnAmount: parseFloat(e.target.value) || 0 })}
                         className="w-full px-3 py-2 rounded-xl bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100 font-mono"
