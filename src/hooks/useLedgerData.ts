@@ -10,7 +10,13 @@ import {
   SocialGiftRecord,
   VehicleProfile,
 } from '../types';
-import { mergeLedgerDatasets, pullFromCloudflareWorker, syncToCloudflareWorker, SyncConflictError } from '../utils/d1Sync';
+import {
+  initializeCloudflareD1Database,
+  mergeLedgerDatasets,
+  pullFromCloudflareWorker,
+  syncToCloudflareWorker,
+  SyncConflictError,
+} from '../utils/d1Sync';
 import { processFuelRecords } from '../utils/fuelCalculator';
 import { clearAllLedgerData, loadLedgerData, resetToSampleData, saveLedgerData } from '../utils/storage';
 import {
@@ -613,6 +619,52 @@ export function useLedgerData() {
           }
         } catch (mergeErr: any) {
           console.error('Auto merge on conflict failed:', mergeErr);
+        }
+      }
+
+      // 若云端提示表缺失、字段未升级或事务回滚，尝试自动调用建表与补齐接口自愈并重试一次
+      const rawErrMsg = err?.message || '';
+      if (/DATABASE_TRANSACTION_FAILED|事务已安全中止回滚|no such table|no such column|表缺失|字段尚未升级/i.test(rawErrMsg)) {
+        try {
+          const initRes = await initializeCloudflareD1Database(workerUrl, apiToken);
+          if (initRes.ok) {
+            // 自愈成功，重新执行同步
+            const retryRes = await syncToCloudflareWorker(workerUrl, apiToken, data);
+            const nowStr = new Date().toLocaleString('zh-CN');
+            const serverMeta = retryRes.data?.syncMeta;
+            const updatedSettings: AppSettings = {
+              ...data.settings,
+              d1Config: {
+                ...data.settings.d1Config,
+                lastSyncTime: nowStr,
+                syncStatus: 'success',
+                errorMessage: undefined,
+              },
+            };
+            if (serverMeta) {
+              const newSyncMeta = {
+                id: 'global',
+                revision: serverMeta.revision,
+                schemaVersion: serverMeta.schema_version ?? 2,
+                lastSyncedAt: serverMeta.last_synced_at || nowStr,
+                updatedAt: new Date().toISOString(),
+              };
+              setData((prev) => ({
+                ...prev,
+                settings: updatedSettings,
+                syncMeta: newSyncMeta,
+              }));
+              settingsRepository.saveSettings(updatedSettings).catch(console.error);
+              syncMetaRepository.updateSyncMeta(newSyncMeta).catch(console.error);
+            } else {
+              updateSettings(updatedSettings);
+            }
+            setIsSyncing(false);
+            setSyncError(null);
+            return true;
+          }
+        } catch (repairErr) {
+          console.warn('Auto database schema repair retry failed:', repairErr);
         }
       }
 

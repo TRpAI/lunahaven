@@ -1,4 +1,5 @@
 import { getCorsHeaders, isOriginAllowed, verifyAuthorization } from './auth';
+import { ensureDatabaseSchema } from './schema';
 import { Env, SyncPayload, D1PreparedStatement, SyncMetaRecord } from './types';
 import { createErrorResponse, createSuccessResponse, sanitizeSettingsForStorage, validateSyncPayload } from './validation';
 
@@ -100,7 +101,7 @@ export default {
     }
 
     try {
-      // 3.1 数据库结构与迁移状态只读探测端点 (无任何动态 DDL 变更)
+      // 3.1 数据库结构与迁移状态探测端点
       if (request.method === 'GET' && (url.pathname === '/api/schema/status' || url.pathname === '/api/schema/inspect')) {
         const meta = await env.DB.prepare(
           "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
@@ -112,240 +113,65 @@ export default {
         ).all().catch(() => ({ results: [] }));
         const tableNames = (tablesRes.results || []).map((r: any) => String(r.name));
 
+        // 深度探测演进新字段是否均已就绪
+        let missingColumnsCount = 0;
+        try {
+          const salariesInfo = await env.DB.prepare("PRAGMA table_info(salaries)").all().catch(() => ({ results: [] }));
+          const salariesCols = new Set((salariesInfo.results || []).map((r: any) => String(r.name)));
+          if (!salariesCols.has('overtime_15_hours') || !salariesCols.has('night_shift_pay') || !salariesCols.has('is_custom_insurance')) {
+            missingColumnsCount++;
+          }
+          const overtimesInfo = await env.DB.prepare("PRAGMA table_info(overtimes)").all().catch(() => ({ results: [] }));
+          const overtimesCols = new Set((overtimesInfo.results || []).map((r: any) => String(r.name)));
+          if (!overtimesCols.has('is_night_shift')) {
+            missingColumnsCount++;
+          }
+          const fuelsInfo = await env.DB.prepare("PRAGMA table_info(fuel_records)").all().catch(() => ({ results: [] }));
+          const fuelsCols = new Set((fuelsInfo.results || []).map((r: any) => String(r.name)));
+          if (!fuelsCols.has('is_warning_light_on')) {
+            missingColumnsCount++;
+          }
+        } catch {
+          // 容错
+        }
+
+        const isFullyReady = Boolean(meta) && tableNames.length >= 10 && missingColumnsCount === 0;
+
         return createSuccessResponse(
           {
             database: 'connected',
-            migrationReady: Boolean(meta),
+            migrationReady: isFullyReady,
             currentRevision: meta?.revision ?? 1,
             schemaVersion: meta?.schema_version ?? 2,
             lastSyncedAt: meta?.last_synced_at ?? null,
             tablesCount: tableNames.length,
             tables: tableNames,
+            missingColumnsCount,
+            message: isFullyReady
+              ? `D1 边缘数据库已就绪 (包含 ${tableNames.length} 张业务表与完整字段，当前版本 r${meta?.revision ?? 1})`
+              : `D1 数据库结构不完整 (表数: ${tableNames.length}/10, 缺失字段项: ${missingColumnsCount})，建议点击【初始化/核查表结构】一键升级补齐。`,
           },
           requestId,
           corsHeaders
         );
       }
 
-      // 3.2 显式数据库表结构初始化端点 (支持用户首次一键初始化 10 张核心业务表与版本元数据)
+      // 3.2 显式数据库表结构初始化端点 (支持用户首次一键初始化 10 张核心业务表与无损补齐所有扩展字段)
       if (request.method === 'POST' && url.pathname === '/api/schema/init') {
-        const nowIso = new Date().toISOString();
-        const initStatements: D1PreparedStatement[] = [
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS salaries (
-              id TEXT PRIMARY KEY,
-              month TEXT NOT NULL,
-              company_name TEXT,
-              base_salary REAL DEFAULT 0,
-              performance_pay REAL DEFAULT 0,
-              overtime_pay REAL DEFAULT 0,
-              allowance REAL DEFAULT 0,
-              other_bonus REAL DEFAULT 0,
-              pre_tax_deduction REAL DEFAULT 0,
-              gross_salary REAL DEFAULT 0,
-              overtime_15_hours REAL DEFAULT 0,
-              overtime_15_pay REAL DEFAULT 0,
-              overtime_20_hours REAL DEFAULT 0,
-              overtime_20_pay REAL DEFAULT 0,
-              overtime_30_hours REAL DEFAULT 0,
-              overtime_30_pay REAL DEFAULT 0,
-              night_shift_days REAL DEFAULT 0,
-              night_shift_rate REAL DEFAULT 0,
-              night_shift_pay REAL DEFAULT 0,
-              full_attendance_pay REAL DEFAULT 0,
-              base_allowance REAL DEFAULT 0,
-              custom_allowances_json TEXT,
-              pension_personal REAL DEFAULT 0,
-              medical_personal REAL DEFAULT 0,
-              unemployment_personal REAL DEFAULT 0,
-              housing_fund_personal REAL DEFAULT 0,
-              total_personal_insurance REAL DEFAULT 0,
-              is_custom_insurance INTEGER DEFAULT 0,
-              custom_deductions_json TEXT,
-              other_deductions_total REAL DEFAULT 0,
-              pension_company REAL DEFAULT 0,
-              medical_company REAL DEFAULT 0,
-              unemployment_company REAL DEFAULT 0,
-              injury_company REAL DEFAULT 0,
-              maternity_company REAL DEFAULT 0,
-              housing_fund_company REAL DEFAULT 0,
-              total_company_insurance REAL DEFAULT 0,
-              special_deductions REAL DEFAULT 0,
-              tax_threshold REAL DEFAULT 5000,
-              taxable_income REAL DEFAULT 0,
-              individual_income_tax REAL DEFAULT 0,
-              net_salary REAL DEFAULT 0,
-              company_total_cost REAL DEFAULT 0,
-              pay_date TEXT,
-              notes TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              deleted_at TEXT
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS overtimes (
-              id TEXT PRIMARY KEY,
-              date TEXT NOT NULL,
-              type TEXT NOT NULL,
-              start_time TEXT,
-              end_time TEXT,
-              duration_hours REAL NOT NULL,
-              multiplier REAL DEFAULT 1.5,
-              settlement_type TEXT NOT NULL,
-              hourly_rate REAL DEFAULT 0,
-              estimated_pay REAL DEFAULT 0,
-              comp_time_hours_used REAL DEFAULT 0,
-              reason TEXT,
-              approver TEXT,
-              is_night_shift INTEGER DEFAULT 0,
-              night_shift_subsidy REAL DEFAULT 0,
-              notes TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              deleted_at TEXT
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS social_gifts (
-              id TEXT PRIMARY KEY,
-              date TEXT NOT NULL,
-              direction TEXT NOT NULL,
-              person_name TEXT NOT NULL,
-              relation TEXT NOT NULL,
-              event_type TEXT NOT NULL,
-              amount REAL NOT NULL,
-              return_status TEXT DEFAULT 'pending',
-              return_amount REAL DEFAULT 0,
-              location TEXT,
-              notes TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              deleted_at TEXT
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS vehicles (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              plate_number TEXT,
-              fuel_type TEXT NOT NULL,
-              tank_capacity REAL DEFAULT 50,
-              initial_odometer REAL DEFAULT 0,
-              current_odometer REAL DEFAULT 0,
-              maintenance_interval_km REAL DEFAULT 10000,
-              maintenance_interval_days INTEGER DEFAULT 180,
-              last_maintenance_date TEXT,
-              last_maintenance_odometer REAL,
-              insurance_expiry_date TEXT,
-              annual_inspection_date TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              deleted_at TEXT
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS fuel_records (
-              id TEXT PRIMARY KEY,
-              vehicle_id TEXT NOT NULL,
-              date TEXT NOT NULL,
-              odometer REAL NOT NULL,
-              fuel_amount REAL NOT NULL,
-              unit_price REAL NOT NULL,
-              total_cost REAL NOT NULL,
-              is_full_tank INTEGER DEFAULT 1,
-              is_warning_light_on INTEGER DEFAULT 0,
-              is_missed_previous INTEGER DEFAULT 0,
-              station TEXT,
-              fuel_type TEXT,
-              calculated_fuel_economy REAL,
-              cost_per_km REAL,
-              trip_distance REAL,
-              notes TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              deleted_at TEXT
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS maintenance_records (
-              id TEXT PRIMARY KEY,
-              vehicle_id TEXT NOT NULL,
-              date TEXT NOT NULL,
-              odometer REAL NOT NULL,
-              category TEXT NOT NULL,
-              title TEXT NOT NULL,
-              items_json TEXT,
-              shop_name TEXT,
-              parts_cost REAL DEFAULT 0,
-              labor_cost REAL DEFAULT 0,
-              total_cost REAL NOT NULL,
-              next_service_odometer REAL,
-              next_service_date TEXT,
-              notes TEXT,
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              deleted_at TEXT
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS expenses (
-              id TEXT PRIMARY KEY,
-              date TEXT NOT NULL,
-              type TEXT NOT NULL,
-              category TEXT NOT NULL,
-              amount REAL NOT NULL,
-              payer TEXT,
-              payment_method TEXT,
-              beneficiary TEXT,
-              remarks TEXT,
-              direction TEXT DEFAULT 'out',
-              created_at TEXT NOT NULL,
-              updated_at TEXT NOT NULL,
-              deleted_at TEXT
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS app_settings (
-              key TEXT PRIMARY KEY,
-              value_json TEXT NOT NULL,
-              updated_at TEXT NOT NULL
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS sync_meta (
-              key TEXT PRIMARY KEY,
-              revision INTEGER DEFAULT 1,
-              schema_version INTEGER DEFAULT 2,
-              last_synced_at TEXT,
-              updated_at TEXT NOT NULL
-            );
-          `),
-          env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS audit_logs (
-              id TEXT PRIMARY KEY,
-              action TEXT NOT NULL,
-              resource TEXT NOT NULL,
-              record_count INTEGER DEFAULT 0,
-              ip_hash TEXT,
-              user_agent TEXT,
-              created_at TEXT NOT NULL
-            );
-          `),
-          env.DB.prepare(`
-            INSERT INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at)
-            VALUES ('global', 1, 2, NULL, '${nowIso}')
-            ON CONFLICT(key) DO NOTHING;
-          `),
-        ];
-
-        await env.DB.batch(initStatements);
+        const result = await ensureDatabaseSchema(env.DB);
+        const meta = await env.DB.prepare(
+          "SELECT key, revision, schema_version, last_synced_at FROM sync_meta WHERE key = 'global'"
+        ).first<SyncMetaRecord>().catch(() => null);
 
         return createSuccessResponse(
           {
             initialized: true,
-            tablesCount: 10,
-            message: 'D1 数据库 10 张核心业务表结构与版本元数据已成功初始化就绪！',
+            tablesCount: result.tablesCount,
+            migratedColumns: result.migratedColumns,
+            currentRevision: meta?.revision ?? 1,
+            message: result.migratedColumns.length > 0
+              ? `D1 数据库 10 张核心业务表与所有扩展字段已升级就绪！(已自动补齐 ${result.migratedColumns.length} 个字段: ${result.migratedColumns.join(', ')})`
+              : 'D1 数据库 10 张核心业务表与索引结构校验通过，所有表及字段均已就绪！',
           },
           requestId,
           corsHeaders
@@ -984,13 +810,34 @@ export default {
         );
 
         // 5.3 原子性事务批量执行 (优先整体单批执行，降低部分数据成功、部分失败的断裂风险)
-        if (statements.length <= 100) {
-          await env.DB.batch(statements);
-        } else {
-          const chunkSize = 80;
-          for (let i = 0; i < statements.length; i += chunkSize) {
-            const chunk = statements.slice(i, i + chunkSize);
-            await env.DB.batch(chunk);
+        const executeBatchStatements = async (stmts: D1PreparedStatement[]) => {
+          if (stmts.length <= 100) {
+            await env.DB.batch(stmts);
+          } else {
+            const chunkSize = 80;
+            for (let i = 0; i < stmts.length; i += chunkSize) {
+              const chunk = stmts.slice(i, i + chunkSize);
+              await env.DB.batch(chunk);
+            }
+          }
+        };
+
+        try {
+          await executeBatchStatements(statements);
+        } catch (batchErr: any) {
+          console.warn(`[${requestId}] Batch statements failed, attempting auto-repair schema:`, batchErr);
+          const rawErrMsg = batchErr?.message || String(batchErr);
+          // 若触发由于旧表结构缺失字段或表未建好的异常，执行无损自动补齐并重试一次
+          if (/no such table|no such column|has no column|D1_ERROR/i.test(rawErrMsg)) {
+            try {
+              await ensureDatabaseSchema(env.DB);
+              await executeBatchStatements(statements);
+            } catch (retryErr: any) {
+              console.error(`[${requestId}] Batch retry after schema repair failed:`, retryErr);
+              throw retryErr;
+            }
+          } else {
+            throw batchErr;
           }
         }
 
@@ -1028,13 +875,25 @@ export default {
       return createErrorResponse(404, 'NOT_FOUND', '请求的 API 路由端点不存在', requestId, corsHeaders);
     } catch (err: any) {
       console.error(`[${requestId}] Worker Internal Error:`, err);
-      // 生产环境关闭内部异常堆栈与数据库结构返回，防止敏感信息泄露
+      const rawErrMsg = err?.message || String(err);
+      let userFriendlyMsg = '数据同步处理异常，事务已安全中止回滚。';
+      if (/no such table/i.test(rawErrMsg)) {
+        userFriendlyMsg = `云端数据表缺失 (${rawErrMsg})。已尝试自动建表，请点击【初始化/核查表结构】完成初始化后重试。`;
+      } else if (/no such column|has no column/i.test(rawErrMsg)) {
+        userFriendlyMsg = `云端数据表字段尚未升级 (${rawErrMsg})。请点击【初始化/核查表结构】一键补齐所有扩展字段。`;
+      } else if (/unique constraint|PRIMARY KEY/i.test(rawErrMsg)) {
+        userFriendlyMsg = `数据冲突或唯一主键冲突 (${rawErrMsg})。`;
+      } else {
+        userFriendlyMsg = `数据同步异常: ${rawErrMsg}。事务已安全中止回滚。`;
+      }
+
       return createErrorResponse(
         500,
         'DATABASE_TRANSACTION_FAILED',
-        '数据同步处理异常，事务已安全中止回滚。如持续发生请检查云端服务日志。',
+        userFriendlyMsg,
         requestId,
-        corsHeaders
+        corsHeaders,
+        { rawError: rawErrMsg }
       );
     }
   },

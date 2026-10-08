@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { MobileNav } from './components/MobileNav';
 import { AnalyticsView } from './components/modules/AnalyticsView';
 import { CloudflareD1View } from './components/modules/CloudflareD1View';
@@ -18,10 +18,87 @@ import { useOneDriveAutoBackup } from './hooks/useOneDriveAutoBackup';
 import { usePrivacyLock } from './hooks/usePrivacyLock';
 import { useTheme } from './hooks/useTheme';
 
+const VALID_TABS = new Set([
+  'dashboard',
+  'salary',
+  'overtime',
+  'expenses',
+  'gift',
+  'vehicle',
+  'analytics',
+  'cloudflare',
+  'settings',
+]);
+
+const getInitialTab = (): string => {
+  if (typeof window !== 'undefined') {
+    const hash = window.location.hash.replace(/^#\/?/, '').trim();
+    if (hash && VALID_TABS.has(hash)) {
+      return hash;
+    }
+    try {
+      const stored = localStorage.getItem('qiyue_active_tab');
+      if (stored && VALID_TABS.has(stored)) {
+        return stored;
+      }
+    } catch {
+      // 容错
+    }
+  }
+  return 'dashboard';
+};
+
 export default function App() {
   const { theme, setTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [activeTab, setActiveTab] = useState<string>(getInitialTab);
   const [isQuickAddOpen, setIsQuickAddOpen] = useState<boolean>(false);
+
+  const handleSelectTab = useCallback((tab: string) => {
+    const targetTab = VALID_TABS.has(tab) ? tab : 'dashboard';
+    setActiveTab(targetTab);
+    try {
+      localStorage.setItem('qiyue_active_tab', targetTab);
+      if (typeof window !== 'undefined') {
+        window.history.replaceState(null, '', `#${targetTab}`);
+      }
+    } catch {
+      // 容错
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace(/^#\/?/, '').trim();
+      if (!hash || !VALID_TABS.has(hash)) {
+        window.history.replaceState(null, '', `#${activeTab}`);
+      }
+      try {
+        localStorage.setItem('qiyue_active_tab', activeTab);
+      } catch {
+        // 容错
+      }
+    }
+
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '').trim();
+      if (hash && VALID_TABS.has(hash)) {
+        setActiveTab((prev) => {
+          if (prev !== hash) {
+            try {
+              localStorage.setItem('qiyue_active_tab', hash);
+            } catch {
+              // 容错
+            }
+            return hash;
+          }
+          return prev;
+        });
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [activeTab]);
 
   const {
     data,
@@ -132,14 +209,14 @@ export default function App() {
         theme={theme}
         onToggleTheme={handleToggleTheme}
         activeTab={activeTab}
-        onSelectTab={setActiveTab}
+        onSelectTab={handleSelectTab}
       />
 
       <div className="flex-1 max-w-7xl w-full mx-auto flex">
         {/* 桌面端左侧导航 */}
         <Sidebar
           activeTab={activeTab}
-          onSelectTab={setActiveTab}
+          onSelectTab={handleSelectTab}
           counts={{
             salaries: data.salaries.length,
             overtimes: data.overtimes.length,
@@ -157,7 +234,7 @@ export default function App() {
             <DashboardView
               data={data}
               onOpenQuickAdd={() => setIsQuickAddOpen(true)}
-              onSelectTab={setActiveTab}
+              onSelectTab={handleSelectTab}
               onSaveFuel={saveFuel}
               onSaveMaintenance={saveMaintenance}
             />
@@ -255,7 +332,7 @@ export default function App() {
       </div>
 
       {/* 移动端底部导航 */}
-      <MobileNav activeTab={activeTab} onSelectTab={setActiveTab} />
+      <MobileNav activeTab={activeTab} onSelectTab={handleSelectTab} />
     </div>
   );
 }

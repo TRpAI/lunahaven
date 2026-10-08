@@ -198,26 +198,11 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
 
     setInitLoading(true);
     try {
-      if (forceInit) {
-        const initRes = await initializeCloudflareD1Database(url, token);
-        showToast('success', `🎉 ${initRes.message}`);
-      }
+      // 始终执行无损建表与字段补齐初始化
+      const initRes = await initializeCloudflareD1Database(url, token);
       const res = await inspectCloudflareD1Database(url, token);
-      if (!res.migrationReady && !forceInit) {
-        // 如果检测到未就绪，尝试自动调用建表初始化
-        try {
-          const initRes = await initializeCloudflareD1Database(url, token);
-          const recheck = await inspectCloudflareD1Database(url, token);
-          setInspectionResult(recheck);
-          showToast('success', `🎉 ${initRes.message}`);
-          handleRunHealthCheck();
-          return;
-        } catch {
-          // 降级使用探测状态
-        }
-      }
       setInspectionResult(res);
-      showToast('success', `🎉 ${res.message}`);
+      showToast('success', `🎉 ${initRes.message}`);
       handleRunHealthCheck();
     } catch (err: any) {
       showToast('error', `操作失败: ${err.message}`);
@@ -512,9 +497,32 @@ ALLOWED_ORIGIN = "https://your-pages-domain.pages.dev,http://localhost:3000"
                   </li>
                 </ul>
               </div>
-            ) : syncError.includes('table') || syncError.includes('表不存在') ? (
-              <div className="text-[11px] bg-white/70 dark:bg-zinc-900/60 p-2 rounded-lg border border-rose-200/60 dark:border-rose-900/40 text-rose-800 dark:text-rose-200">
-                💡 检测到数据库表尚未就绪，请点击上方快捷按钮中的【初始化/核查表结构】一键生成所有业务数据表。
+            ) : syncError.includes('table') || syncError.includes('表不存在') || syncError.includes('表缺失') || syncError.includes('字段') || syncError.includes('DATABASE_TRANSACTION_FAILED') || syncError.includes('事务已安全中止回滚') ? (
+              <div className="text-[11px] bg-white/70 dark:bg-zinc-900/60 p-2.5 rounded-lg border border-amber-200/60 dark:border-amber-900/40 text-amber-800 dark:text-amber-200 space-y-1.5">
+                <div className="font-semibold flex items-center gap-1.5 text-amber-900 dark:text-amber-100">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                  <span>💡 云端数据库表结构或扩展字段升级建议：</span>
+                </div>
+                <p className="opacity-90">
+                  检测到云端 D1 数据库表结构尚未建立或缺少近期新扩展字段（如长夜班补贴、五险一金细项、综合支出方向等）。
+                </p>
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    onClick={() => handleInitializeOrInspectDatabase()}
+                    disabled={initLoading || !hasConfig}
+                    className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold shadow-xs transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    <Sparkles className={`w-3 h-3 ${initLoading ? 'animate-spin' : ''}`} />
+                    <span>{initLoading ? '升级中...' : '一键初始化 / 补齐表结构'}</span>
+                  </button>
+                  <button
+                    onClick={onManualSync}
+                    disabled={isSyncing || !hasConfig}
+                    className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 dark:bg-zinc-200 dark:hover:bg-zinc-300 text-white dark:text-zinc-900 text-xs font-medium transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    重试同步
+                  </button>
+                </div>
               </div>
             ) : (
               <p className="text-[11px] opacity-80">
