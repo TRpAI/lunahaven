@@ -185,7 +185,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     id TEXT PRIMARY KEY,
     date TEXT NOT NULL,                 -- YYYY-MM-DD
     type TEXT NOT NULL,                 -- living (日常生活) / medical / gift / education / travel
-    category TEXT NOT NULL,             -- 餐饮美食/居家物业/门诊就医/课外培优等
+    category TEXT NOT NULL,             -- 餐饮美食/居家物业/酒水烟草/门诊就医/课外培优等
     amount REAL NOT NULL,               -- 支出金额
     payer TEXT,                         -- 出资人
     payment_method TEXT,                -- 支付渠道
