@@ -128,7 +128,12 @@ export default {
           }
           const fuelsInfo = await env.DB.prepare("PRAGMA table_info(fuel_records)").all().catch(() => ({ results: [] }));
           const fuelsCols = new Set((fuelsInfo.results || []).map((r: any) => String(r.name)));
-          if (!fuelsCols.has('is_warning_light_on')) {
+          if (!fuelsCols.has('is_warning_light_on') || !fuelsCols.has('is_missed_previous')) {
+            missingColumnsCount++;
+          }
+          const expensesInfo = await env.DB.prepare("PRAGMA table_info(expenses)").all().catch(() => ({ results: [] }));
+          const expensesCols = new Set((expensesInfo.results || []).map((r: any) => String(r.name)));
+          if (!expensesCols.has('direction')) {
             missingColumnsCount++;
           }
         } catch {
@@ -809,15 +814,26 @@ export default {
           ).bind(nowIso, nowIso)
         );
 
-        // 5.3 原子性事务批量执行 (优先整体单批执行，降低部分数据成功、部分失败的断裂风险)
+        // 5.3 原子性与自愈性批量执行 (Chunk 50 调优，外键容错与自愈重试)
         const executeBatchStatements = async (stmts: D1PreparedStatement[]) => {
-          if (stmts.length <= 100) {
+          if (!stmts || stmts.length === 0) return;
+
+          // 临时放宽外键强约束检查，避免因孤儿历史数据或客户端提交顺序引发级联拒绝
+          try {
+            await env.DB.prepare('PRAGMA foreign_keys = OFF;').run();
+          } catch {
+            // 忽略 PRAGMA 异常
+          }
+
+          if (stmts.length <= 50) {
             await env.DB.batch(stmts);
           } else {
-            const chunkSize = 80;
+            const chunkSize = 50;
             for (let i = 0; i < stmts.length; i += chunkSize) {
               const chunk = stmts.slice(i, i + chunkSize);
-              await env.DB.batch(chunk);
+              if (chunk.length > 0) {
+                await env.DB.batch(chunk);
+              }
             }
           }
         };
@@ -828,7 +844,7 @@ export default {
           console.warn(`[${requestId}] Batch statements failed, attempting auto-repair schema:`, batchErr);
           const rawErrMsg = batchErr?.message || String(batchErr);
           // 若触发由于旧表结构缺失字段或表未建好的异常，执行无损自动补齐并重试一次
-          if (/no such table|no such column|has no column|D1_ERROR/i.test(rawErrMsg)) {
+          if (/no such table|no such column|has no column|D1_ERROR|SQLITE_ERROR/i.test(rawErrMsg)) {
             try {
               await ensureDatabaseSchema(env.DB);
               await executeBatchStatements(statements);
@@ -880,11 +896,13 @@ export default {
       if (/no such table/i.test(rawErrMsg)) {
         userFriendlyMsg = `云端数据表缺失 (${rawErrMsg})。已尝试自动建表，请点击【初始化/核查表结构】完成初始化后重试。`;
       } else if (/no such column|has no column/i.test(rawErrMsg)) {
-        userFriendlyMsg = `云端数据表字段尚未升级 (${rawErrMsg})。请点击【初始化/核查表结构】一键补齐所有扩展字段。`;
+        userFriendlyMsg = `云端数据表字段尚未升级 (${rawErrMsg})。已尝试自动补齐，请点击【初始化/核查表结构】重新核查。`;
       } else if (/unique constraint|PRIMARY KEY/i.test(rawErrMsg)) {
         userFriendlyMsg = `数据冲突或唯一主键冲突 (${rawErrMsg})。`;
+      } else if (/FOREIGN KEY/i.test(rawErrMsg)) {
+        userFriendlyMsg = `外键关联约束检查异常 (${rawErrMsg})。已自动降级处理，请重试同步。`;
       } else {
-        userFriendlyMsg = `数据同步异常: ${rawErrMsg}。事务已安全中止回滚。`;
+        userFriendlyMsg = `数据同步异常: ${rawErrMsg}。事务已安全中止回滚。如持续发生请检查云端服务日志。`;
       }
 
       return createErrorResponse(

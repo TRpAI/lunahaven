@@ -83,6 +83,7 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
     // 关键安全响应标头 (Cloudflare Edge 规范)
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
     'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };

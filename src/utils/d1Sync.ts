@@ -862,8 +862,10 @@ export async function syncToCloudflareWorker(
 
   if (!res.ok || !json?.success) {
     const errorMsg = json?.error?.message || json?.error || `HTTP ${res.status}`;
+    const rawError = json?.error?.details?.rawError;
+    const detailPart = rawError && !errorMsg.includes(rawError) ? ` [详细: ${rawError}]` : '';
     const requestId = json?.requestId ? ` (ReqId: ${json.requestId.slice(0, 8)})` : '';
-    throw new Error(`${errorMsg}${requestId}`);
+    throw new Error(`${errorMsg}${detailPart}${requestId}`);
   }
 
   return json;
@@ -897,8 +899,10 @@ export async function pullFromCloudflareWorker(
 
   if (!res.ok || !json?.success || !json.data) {
     const errorMsg = json?.error?.message || json?.error || `HTTP ${res.status}`;
+    const rawError = json?.error?.details?.rawError;
+    const detailPart = rawError && !errorMsg.includes(rawError) ? ` [详细: ${rawError}]` : '';
     const requestId = json?.requestId ? ` (ReqId: ${json.requestId.slice(0, 8)})` : '';
-    throw new Error(`${errorMsg}${requestId}`);
+    throw new Error(`${errorMsg}${detailPart}${requestId}`);
   }
 
   const d = json.data;

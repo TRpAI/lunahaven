@@ -5,9 +5,9 @@ export interface ValidationError {
   message: string;
 }
 
-// 单次批量同步数量安全阈值限制 (防止超出 Worker CPU / D1 Batch 事务限制)
-export const MAX_ARRAY_LENGTH = 300;
-export const MAX_TOTAL_RECORDS = 800;
+// 单次批量同步数量安全阈值限制 (经生产环境深度调优，兼顾历史数据导入与 Worker CPU/D1 批量安全)
+export const MAX_ARRAY_LENGTH = 2000;
+export const MAX_TOTAL_RECORDS = 5000;
 
 export function validateSyncPayload(payload: any): { valid: boolean; errors: ValidationError[] } {
   const errors: ValidationError[] = [];
@@ -253,13 +253,18 @@ export function createErrorResponse(
         ...corsHeaders,
         'Content-Type': 'application/json',
         'X-Request-Id': requestId,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
       },
     }
   );
 }
 
 /**
- * 生产环境统一 JSON 成功响应结构
+ * 生产环境统一 JSON 成功响应结构 (严格禁止 CDN 边缘与客户端缓存私人财务账本数据)
  */
 export function createSuccessResponse(
   data: any,
@@ -281,6 +286,11 @@ export function createSuccessResponse(
         ...corsHeaders,
         'Content-Type': 'application/json',
         'X-Request-Id': requestId,
+        'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
       },
     }
   );

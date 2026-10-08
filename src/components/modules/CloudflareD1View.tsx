@@ -497,7 +497,7 @@ ALLOWED_ORIGIN = "https://your-pages-domain.pages.dev,http://localhost:3000"
                   </li>
                 </ul>
               </div>
-            ) : syncError.includes('table') || syncError.includes('表不存在') || syncError.includes('表缺失') || syncError.includes('字段') || syncError.includes('DATABASE_TRANSACTION_FAILED') || syncError.includes('事务已安全中止回滚') ? (
+            ) : syncError.includes('table') || syncError.includes('表不存在') || syncError.includes('表缺失') || syncError.includes('字段') || syncError.includes('DATABASE_TRANSACTION_FAILED') || syncError.includes('事务已安全中止回滚') || syncError.includes('D1_ERROR') || syncError.includes('SQLITE_ERROR') || syncError.includes('数据同步异常') || syncError.includes('回滚') ? (
               <div className="text-[11px] bg-white/70 dark:bg-zinc-900/60 p-2.5 rounded-lg border border-amber-200/60 dark:border-amber-900/40 text-amber-800 dark:text-amber-200 space-y-1.5">
                 <div className="font-semibold flex items-center gap-1.5 text-amber-900 dark:text-amber-100">
                   <Sparkles className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
