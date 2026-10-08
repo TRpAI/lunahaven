@@ -309,6 +309,11 @@ async function fetchWithTimeoutAndRetry(
       clearTimeout(timeoutId);
       if (err?.name === 'AbortError') {
         lastError = new Error(`网络请求超时 (${Math.round(timeoutMs / 1000)}秒)，请检查 Cloudflare Worker 服务连通性`);
+      } else if (err?.message === 'Failed to fetch' || err?.name === 'TypeError') {
+        const originStr = typeof window !== 'undefined' ? window.location.origin : '';
+        lastError = new Error(
+          `网络连接或跨域受阻 (Failed to fetch)。请排查：\n1. 跨域策略 (CORS)：请检查 Cloudflare Worker 的 ALLOWED_ORIGIN 变量是否已包含当前前端域名 (${originStr})；\n2. Worker 服务地址是否准确、已发布上线并支持 HTTPS；\n3. 若在本地调试请确保端口匹配。`
+        );
       } else {
         lastError = new Error(err?.message || '网络连接失败');
       }
@@ -476,7 +481,43 @@ export async function inspectCloudflareD1Database(
     tables: data.tables || [],
     message: data.migrationReady
       ? `D1 数据库结构就绪：共核查到 ${data.tablesCount ?? 10} 张业务表，当前版本 r${data.currentRevision ?? 1}`
-      : 'D1 数据库已连接，但尚未运行迁移。请通过 wrangler d1 migrations apply 应用迁移文件。',
+      : 'D1 数据库已连接，但尚未运行迁移。可点击【初始化表结构】或在终端执行 wrangler d1 migrations apply。',
+  };
+}
+
+/**
+ * 显式远程一键初始化 D1 数据库表结构与索引 (POST /api/schema/init)
+ */
+export async function initializeCloudflareD1Database(
+  workerUrl: string,
+  apiToken: string
+): Promise<{ ok: boolean; message: string; tablesCount?: number }> {
+  const cleanUrl = sanitizeWorkerUrl(workerUrl);
+  const targetUrl = `${cleanUrl}/api/schema/init`;
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'X-Client-Version': '2.3.0',
+  };
+  if (apiToken && apiToken.trim()) {
+    headers['Authorization'] = `Bearer ${apiToken.trim()}`;
+  }
+
+  const res = await fetchWithTimeoutAndRetry(targetUrl, {
+    method: 'POST',
+    headers,
+  }, 15000, 1);
+
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.success) {
+    const errorMsg = json?.error?.message || json?.error || `HTTP ${res.status}`;
+    throw new Error(errorMsg);
+  }
+
+  return {
+    ok: true,
+    message: json?.data?.message || 'D1 数据库 10 张核心业务表与索引已初始化就绪！',
+    tablesCount: json?.data?.tablesCount ?? 10,
   };
 }
 

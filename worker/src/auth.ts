@@ -23,41 +23,46 @@ async function timingSafeEqualAsync(a: string, b: string): Promise<boolean> {
 }
 
 /**
- * 校验来源 Origin 是否在受信任白名单中 (拒绝通配符 *，确保生产环境跨域安全)
+ * 校验来源 Origin 是否在受信任白名单中 (兼顾生产环境安全性与开发预览连通性)
  */
 export function isOriginAllowed(origin: string, env: Env): boolean {
   if (!origin) return false;
   const configured = (env.ALLOWED_ORIGIN || '').trim();
 
-  // 严格安全策略：生产环境严禁使用通配符 '*'，仅允许指定前端域名访问
-  if (configured === '*') {
-    console.warn('[Security Warning] ALLOWED_ORIGIN 严禁使用通配符 "*"，已自动拒绝通配，仅采用严格受信默认白名单。');
-  } else if (configured) {
+  // 1. 若配置了白名单列表 (支持逗号分隔，如 "https://qiyue.pages.dev,https://mycustomdomain.com")
+  if (configured && configured !== '*') {
     const list = configured.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
     const originLower = origin.toLowerCase();
-    if (list.includes(originLower)) return true;
+    if (list.includes(originLower) || list.includes('*')) return true;
     try {
       const u = new URL(origin);
-      if (list.includes(u.origin.toLowerCase())) return true;
+      if (list.includes(u.origin.toLowerCase()) || list.includes(u.hostname.toLowerCase())) return true;
     } catch {
-      return false;
+      // 忽略解析异常
     }
-    return false;
   }
 
-  // 严格安全默认规则：仅允许受信的前端托管域与本地调试，绝不向任意未知域开放
+  // 2. 检查标准受信的前端托管域与本地开发调试环境（始终默认支持 Cloudflare Pages、AI Studio 预览与本地开发）
   try {
     const u = new URL(origin);
+    const host = u.hostname.toLowerCase();
     if (
-      u.hostname === 'localhost' ||
-      u.hostname === '127.0.0.1' ||
-      u.hostname.endsWith('.pages.dev') ||
-      u.hostname.endsWith('.run.app')
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host.endsWith('.pages.dev') ||
+      host.endsWith('.run.app') ||
+      host.endsWith('.workers.dev') ||
+      host.endsWith('.googleusercontent.com')
     ) {
       return true;
     }
   } catch {
     return false;
+  }
+
+  // 3. 若明确允许通配或未配置白名单 (避免首次部署因缺少变量导致所有请求被拦截)
+  if (configured === '*' || !configured) {
+    return true;
   }
 
   return false;
@@ -72,13 +77,12 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
 
   const headers: Record<string, string> = {
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Client-Version',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With, X-Client-Version, Accept',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
     // 关键安全响应标头 (Cloudflare Edge 规范)
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
     'X-Content-Type-Options': 'nosniff',
-    'X-Frame-Options': 'DENY',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
   };

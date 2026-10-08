@@ -37,6 +37,7 @@ import {
   CLOUDFLARE_D1_SCHEMA_SQL,
   D1DatabaseStatusResult,
   generateCloudflareD1SqlDump,
+  initializeCloudflareD1Database,
   inspectCloudflareD1Database,
   mergeLedgerDatasets,
   pullFromCloudflareWorker,
@@ -186,7 +187,7 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
     }
   };
 
-  const handleInspectRemoteDatabase = async () => {
+  const handleInitializeOrInspectDatabase = async (forceInit = false) => {
     const url = (workerUrlInput || d1Config.workerUrl || '').trim();
     const token = (apiTokenInput || d1Config.apiToken || '').trim();
 
@@ -197,12 +198,29 @@ export const CloudflareD1View: React.FC<CloudflareD1ViewProps> = ({
 
     setInitLoading(true);
     try {
+      if (forceInit) {
+        const initRes = await initializeCloudflareD1Database(url, token);
+        showToast('success', `🎉 ${initRes.message}`);
+      }
       const res = await inspectCloudflareD1Database(url, token);
+      if (!res.migrationReady && !forceInit) {
+        // 如果检测到未就绪，尝试自动调用建表初始化
+        try {
+          const initRes = await initializeCloudflareD1Database(url, token);
+          const recheck = await inspectCloudflareD1Database(url, token);
+          setInspectionResult(recheck);
+          showToast('success', `🎉 ${initRes.message}`);
+          handleRunHealthCheck();
+          return;
+        } catch {
+          // 降级使用探测状态
+        }
+      }
       setInspectionResult(res);
       showToast('success', `🎉 ${res.message}`);
       handleRunHealthCheck();
     } catch (err: any) {
-      showToast('error', `状态探测失败: ${err.message}`);
+      showToast('error', `操作失败: ${err.message}`);
     } finally {
       setInitLoading(false);
     }
@@ -396,15 +414,15 @@ ALLOWED_ORIGIN = "https://your-pages-domain.pages.dev,http://localhost:3000"
         {/* 核心操作按钮组：初始化表结构 / 同步 / 拉取 / 健康 / 导出 (移动端 2-3 列响应式网格排布) */}
         <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800">
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 w-full">
-            {/* 1. 核查迁移状态 */}
+            {/* 1. 初始化 / 核查表结构 */}
             <button
-              onClick={handleInspectRemoteDatabase}
+              onClick={() => handleInitializeOrInspectDatabase(false)}
               disabled={initLoading || !hasConfig}
               className="flex items-center justify-center gap-1.5 px-2.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-zinc-200 dark:disabled:bg-zinc-800 text-white disabled:text-zinc-400 text-xs font-semibold shadow-xs transition-all cursor-pointer disabled:cursor-not-allowed min-w-0"
-              title={hasConfig ? '远程只读核查 D1 数据库 10 张表结构及迁移版本（安全无动态 DDL）' : '请先配置 Worker URL'}
+              title={hasConfig ? '远程初始化或核查 D1 数据库 10 张核心业务表结构及版本元数据' : '请先配置 Worker URL'}
             >
               <Sparkles className={`w-3.5 h-3.5 shrink-0 ${initLoading ? 'animate-spin' : ''}`} />
-              <span className="truncate">{initLoading ? '核查中...' : '核查迁移状态'}</span>
+              <span className="truncate">{initLoading ? '处理中...' : '初始化/核查表结构'}</span>
             </button>
 
             {/* 2. 立即同步 */}
@@ -473,13 +491,36 @@ ALLOWED_ORIGIN = "https://your-pages-domain.pages.dev,http://localhost:3000"
 
       {/* 同步异常提示 */}
       {syncError && (
-        <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-2">
+        <div className="p-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-start gap-3">
           <AlertCircle className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-          <div className="flex-1 min-w-0">
-            <div className="font-bold">云端同步异常: {syncError}</div>
-            <p className="text-[11px] opacity-80 mt-0.5">
-              若首次使用提示表不存在，可点击上方快捷按钮中的【初始化表结构】。
-            </p>
+          <div className="flex-1 min-w-0 space-y-1.5">
+            <div className="font-bold flex items-center justify-between">
+              <span>云端同步异常: {syncError.split('\n')[0]}</span>
+            </div>
+            {syncError.includes('Failed to fetch') || syncError.includes('网络连接') ? (
+              <div className="text-[11px] bg-white/70 dark:bg-zinc-900/60 p-2.5 rounded-lg border border-rose-200/60 dark:border-rose-900/40 text-rose-800 dark:text-rose-200 space-y-1">
+                <div className="font-semibold">💡 连接排查指南 (Failed to fetch)：</div>
+                <ul className="list-disc list-inside space-y-0.5 pl-1 opacity-90">
+                  <li>
+                    <b>检查跨域白名单 (CORS)</b>：请确认 Worker 的 <code className="font-mono px-1 rounded bg-rose-100 dark:bg-rose-900/60">ALLOWED_ORIGIN</code> 包含当前前端域名 <code className="font-mono font-bold">{typeof window !== 'undefined' ? window.location.origin : ''}</code>。
+                  </li>
+                  <li>
+                    <b>检查 API 地址</b>：确保在下方填写的 Worker API 完整 URL 正确且支持 HTTPS 访问。
+                  </li>
+                  <li>
+                    <b>服务连通性</b>：可点击上方快捷按钮中的【健康测试】探测 Worker 是否正常运行。
+                  </li>
+                </ul>
+              </div>
+            ) : syncError.includes('table') || syncError.includes('表不存在') ? (
+              <div className="text-[11px] bg-white/70 dark:bg-zinc-900/60 p-2 rounded-lg border border-rose-200/60 dark:border-rose-900/40 text-rose-800 dark:text-rose-200">
+                💡 检测到数据库表尚未就绪，请点击上方快捷按钮中的【初始化/核查表结构】一键生成所有业务数据表。
+              </div>
+            ) : (
+              <p className="text-[11px] opacity-80">
+                若首次使用提示表不存在或迁移未就绪，可点击上方快捷按钮中的【初始化/核查表结构】。
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -732,6 +773,31 @@ ALLOWED_ORIGIN = "https://your-pages-domain.pages.dev,http://localhost:3000"
           <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-0.5">
             配置您在 Cloudflare 部署的私有 Worker API 节点与加密 Bearer Token 访问密钥
           </p>
+        </div>
+
+        {/* 当前前端域名与跨域提示卡片 */}
+        <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-indigo-900 dark:text-indigo-200 max-w-xl">
+          <div className="min-w-0">
+            <span className="font-semibold block text-[11px] text-indigo-700 dark:text-indigo-300">
+              当前前端访问域名 (请加入 Worker 的 ALLOWED_ORIGIN 白名单):
+            </span>
+            <div className="font-mono font-bold text-xs mt-0.5 text-indigo-950 dark:text-indigo-100 truncate select-all">
+              {typeof window !== 'undefined' ? window.location.origin : 'https://qiyue.pages.dev'}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                navigator.clipboard.writeText(window.location.origin);
+                showToast('info', '当前前端域名已复制到剪贴板，可粘贴至 Worker 的 ALLOWED_ORIGIN');
+              }
+            }}
+            className="px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-[11px] transition-colors shrink-0 self-start sm:self-auto cursor-pointer shadow-xs flex items-center gap-1"
+          >
+            <Copy className="w-3 h-3" />
+            <span>复制当前域名</span>
+          </button>
         </div>
 
         <form onSubmit={handleSaveConfig} className="space-y-4 text-xs max-w-xl">

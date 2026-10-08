@@ -126,6 +126,231 @@ export default {
           corsHeaders
         );
       }
+
+      // 3.2 显式数据库表结构初始化端点 (支持用户首次一键初始化 10 张核心业务表与版本元数据)
+      if (request.method === 'POST' && url.pathname === '/api/schema/init') {
+        const nowIso = new Date().toISOString();
+        const initStatements: D1PreparedStatement[] = [
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS salaries (
+              id TEXT PRIMARY KEY,
+              month TEXT NOT NULL,
+              company_name TEXT,
+              base_salary REAL DEFAULT 0,
+              performance_pay REAL DEFAULT 0,
+              overtime_pay REAL DEFAULT 0,
+              allowance REAL DEFAULT 0,
+              other_bonus REAL DEFAULT 0,
+              pre_tax_deduction REAL DEFAULT 0,
+              gross_salary REAL DEFAULT 0,
+              overtime_15_hours REAL DEFAULT 0,
+              overtime_15_pay REAL DEFAULT 0,
+              overtime_20_hours REAL DEFAULT 0,
+              overtime_20_pay REAL DEFAULT 0,
+              overtime_30_hours REAL DEFAULT 0,
+              overtime_30_pay REAL DEFAULT 0,
+              night_shift_days REAL DEFAULT 0,
+              night_shift_rate REAL DEFAULT 0,
+              night_shift_pay REAL DEFAULT 0,
+              full_attendance_pay REAL DEFAULT 0,
+              base_allowance REAL DEFAULT 0,
+              custom_allowances_json TEXT,
+              pension_personal REAL DEFAULT 0,
+              medical_personal REAL DEFAULT 0,
+              unemployment_personal REAL DEFAULT 0,
+              housing_fund_personal REAL DEFAULT 0,
+              total_personal_insurance REAL DEFAULT 0,
+              is_custom_insurance INTEGER DEFAULT 0,
+              custom_deductions_json TEXT,
+              other_deductions_total REAL DEFAULT 0,
+              pension_company REAL DEFAULT 0,
+              medical_company REAL DEFAULT 0,
+              unemployment_company REAL DEFAULT 0,
+              injury_company REAL DEFAULT 0,
+              maternity_company REAL DEFAULT 0,
+              housing_fund_company REAL DEFAULT 0,
+              total_company_insurance REAL DEFAULT 0,
+              special_deductions REAL DEFAULT 0,
+              tax_threshold REAL DEFAULT 5000,
+              taxable_income REAL DEFAULT 0,
+              individual_income_tax REAL DEFAULT 0,
+              net_salary REAL DEFAULT 0,
+              company_total_cost REAL DEFAULT 0,
+              pay_date TEXT,
+              notes TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS overtimes (
+              id TEXT PRIMARY KEY,
+              date TEXT NOT NULL,
+              type TEXT NOT NULL,
+              start_time TEXT,
+              end_time TEXT,
+              duration_hours REAL NOT NULL,
+              multiplier REAL DEFAULT 1.5,
+              settlement_type TEXT NOT NULL,
+              hourly_rate REAL DEFAULT 0,
+              estimated_pay REAL DEFAULT 0,
+              comp_time_hours_used REAL DEFAULT 0,
+              reason TEXT,
+              approver TEXT,
+              is_night_shift INTEGER DEFAULT 0,
+              night_shift_subsidy REAL DEFAULT 0,
+              notes TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS social_gifts (
+              id TEXT PRIMARY KEY,
+              date TEXT NOT NULL,
+              direction TEXT NOT NULL,
+              person_name TEXT NOT NULL,
+              relation TEXT NOT NULL,
+              event_type TEXT NOT NULL,
+              amount REAL NOT NULL,
+              return_status TEXT DEFAULT 'pending',
+              return_amount REAL DEFAULT 0,
+              location TEXT,
+              notes TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS vehicles (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              plate_number TEXT,
+              fuel_type TEXT NOT NULL,
+              tank_capacity REAL DEFAULT 50,
+              initial_odometer REAL DEFAULT 0,
+              current_odometer REAL DEFAULT 0,
+              maintenance_interval_km REAL DEFAULT 10000,
+              maintenance_interval_days INTEGER DEFAULT 180,
+              last_maintenance_date TEXT,
+              last_maintenance_odometer REAL,
+              insurance_expiry_date TEXT,
+              annual_inspection_date TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS fuel_records (
+              id TEXT PRIMARY KEY,
+              vehicle_id TEXT NOT NULL,
+              date TEXT NOT NULL,
+              odometer REAL NOT NULL,
+              fuel_amount REAL NOT NULL,
+              unit_price REAL NOT NULL,
+              total_cost REAL NOT NULL,
+              is_full_tank INTEGER DEFAULT 1,
+              is_warning_light_on INTEGER DEFAULT 0,
+              is_missed_previous INTEGER DEFAULT 0,
+              station TEXT,
+              fuel_type TEXT,
+              calculated_fuel_economy REAL,
+              cost_per_km REAL,
+              trip_distance REAL,
+              notes TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS maintenance_records (
+              id TEXT PRIMARY KEY,
+              vehicle_id TEXT NOT NULL,
+              date TEXT NOT NULL,
+              odometer REAL NOT NULL,
+              category TEXT NOT NULL,
+              title TEXT NOT NULL,
+              items_json TEXT,
+              shop_name TEXT,
+              parts_cost REAL DEFAULT 0,
+              labor_cost REAL DEFAULT 0,
+              total_cost REAL NOT NULL,
+              next_service_odometer REAL,
+              next_service_date TEXT,
+              notes TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS expenses (
+              id TEXT PRIMARY KEY,
+              date TEXT NOT NULL,
+              type TEXT NOT NULL,
+              category TEXT NOT NULL,
+              amount REAL NOT NULL,
+              payer TEXT,
+              payment_method TEXT,
+              beneficiary TEXT,
+              remarks TEXT,
+              direction TEXT DEFAULT 'out',
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              deleted_at TEXT
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS app_settings (
+              key TEXT PRIMARY KEY,
+              value_json TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS sync_meta (
+              key TEXT PRIMARY KEY,
+              revision INTEGER DEFAULT 1,
+              schema_version INTEGER DEFAULT 2,
+              last_synced_at TEXT,
+              updated_at TEXT NOT NULL
+            );
+          `),
+          env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS audit_logs (
+              id TEXT PRIMARY KEY,
+              action TEXT NOT NULL,
+              resource TEXT NOT NULL,
+              record_count INTEGER DEFAULT 0,
+              ip_hash TEXT,
+              user_agent TEXT,
+              created_at TEXT NOT NULL
+            );
+          `),
+          env.DB.prepare(`
+            INSERT INTO sync_meta (key, revision, schema_version, last_synced_at, updated_at)
+            VALUES ('global', 1, 2, NULL, '${nowIso}')
+            ON CONFLICT(key) DO NOTHING;
+          `),
+        ];
+
+        await env.DB.batch(initStatements);
+
+        return createSuccessResponse(
+          {
+            initialized: true,
+            tablesCount: 10,
+            message: 'D1 数据库 10 张核心业务表结构与版本元数据已成功初始化就绪！',
+          },
+          requestId,
+          corsHeaders
+        );
+      }
       // 4. GET /api/sync - 支持全量与增量 (since) 数据拉取
       if (request.method === 'GET' && url.pathname === '/api/sync') {
         const since = url.searchParams.get('since');
