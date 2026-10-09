@@ -7,6 +7,36 @@ export interface AuthResult {
   errorMessage?: string;
 }
 
+// 内存中基于客户端 IP 的鉴权防爆破限流器 (Worker Isolate 级防御)
+const MAX_FAILED_ATTEMPTS = 5;
+const LOCKOUT_WINDOW_MS = 60 * 1000; // 60 秒窗口
+const failedAuthMap = new Map<string, { count: number; lockedUntil: number }>();
+
+function cleanupExpiredRateLimits(now: number) {
+  if (failedAuthMap.size > 500) {
+    for (const [ip, entry] of failedAuthMap.entries()) {
+      if (entry.lockedUntil < now) {
+        failedAuthMap.delete(ip);
+      }
+    }
+  }
+}
+
+/**
+ * 计算客户端 IP 的加盐不可逆摘要 (符合 GDPR/数据合规与隐私保护规范)
+ */
+export async function hashIpAddress(ip: string): Promise<string> {
+  try {
+    const enc = new TextEncoder();
+    const data = enc.encode(`${ip || 'unknown'}:qiyue_salt_cf_v2`);
+    const hashBuf = await crypto.subtle.digest('SHA-256', data);
+    const hashArr = Array.from(new Uint8Array(hashBuf));
+    return hashArr.map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
+  } catch {
+    return 'anon_edge';
+  }
+}
+
 /**
  * 基于 WebCrypto SHA-256 摘要的严格常量时间字符串比对
  * 通过对两端凭据进行 SHA-256 哈希后固定以 32 字节比较，消除字符长度泄露与侧信道时序攻击隐患
@@ -29,40 +59,44 @@ export function isOriginAllowed(origin: string, env: Env): boolean {
   if (!origin) return false;
   const configured = (env.ALLOWED_ORIGIN || '').trim();
 
-  // 1. 若配置了白名单列表 (支持逗号分隔，如 "https://qiyue.pages.dev,https://mycustomdomain.com")
-  if (configured && configured !== '*') {
-    const list = configured.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
-    const originLower = origin.toLowerCase();
-    if (list.includes(originLower) || list.includes('*')) return true;
-    try {
-      const u = new URL(origin);
-      if (list.includes(u.origin.toLowerCase()) || list.includes(u.hostname.toLowerCase())) return true;
-    } catch {
-      // 忽略解析异常
-    }
-  }
-
-  // 2. 检查标准受信的前端托管域与本地开发调试环境（始终默认支持 Cloudflare Pages、AI Studio 预览与本地开发）
+  let u: URL;
   try {
-    const u = new URL(origin);
-    const host = u.hostname.toLowerCase();
-    if (
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host.endsWith('.pages.dev') ||
-      host.endsWith('.run.app') ||
-      host.endsWith('.workers.dev') ||
-      host.endsWith('.googleusercontent.com')
-    ) {
-      return true;
-    }
+    u = new URL(origin);
   } catch {
     return false;
   }
+  const host = u.hostname.toLowerCase();
+  const originLower = origin.toLowerCase();
 
-  // 3. 若明确允许通配或未配置白名单 (避免首次部署因缺少变量导致所有请求被拦截)
-  if (configured === '*' || !configured) {
+  // 1. 本地开发与标准沙箱开发环境始终允许调试
+  if (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.run.app') ||
+    host.endsWith('.googleusercontent.com')
+  ) {
     return true;
+  }
+
+  // 2. 若配置了白名单列表 (严禁非法跨站越权)
+  if (configured && configured !== '*') {
+    const list = configured.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+    if (list.includes(originLower)) return true;
+    if (list.includes(u.origin.toLowerCase()) || list.includes(host)) return true;
+    // 严格模式：配置了明确白名单时，绝不随意允许任意其它三方 pages.dev / workers.dev
+    return false;
+  }
+
+  // 3. 若配置为通配符 '*'
+  if (configured === '*') {
+    return true;
+  }
+
+  // 4. 若未配置 ALLOWED_ORIGIN 变量 (首次部署开箱即用宽容模式，仅允许 pages.dev 与 workers.dev)
+  if (!configured) {
+    if (host.endsWith('.pages.dev') || host.endsWith('.workers.dev')) {
+      return true;
+    }
   }
 
   return false;
@@ -84,8 +118,10 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
     'Strict-Transport-Security': 'max-age=31536000; includeSubDomains; preload',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
-    'Referrer-Policy': 'strict-origin-when-cross-origin',
-    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+    'Referrer-Policy': 'no-referrer',
+    'X-XSS-Protection': '0',
+    'Permissions-Policy': 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()',
   };
 
   // 仅对明确校验通过的可信 Origin 返回 CORS 允许标头，严禁使用 '*'
@@ -97,7 +133,7 @@ export function getCorsHeaders(request: Request, env: Env): Record<string, strin
 }
 
 /**
- * 生产环境强制 Token 鉴权 (兼容 API_TOKEN 与 AUTH_TOKEN，具备严格时序攻击防御)
+ * 生产环境强制 Token 鉴权 (兼容 API_TOKEN 与 AUTH_TOKEN，具备严格时序攻击与防爆破防御)
  */
 export async function verifyAuthorization(request: Request, env: Env): Promise<AuthResult> {
   const configuredToken = (env.API_TOKEN || env.AUTH_TOKEN || '').trim();
@@ -111,27 +147,65 @@ export async function verifyAuthorization(request: Request, env: Env): Promise<A
     };
   }
 
+  const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
+  const now = Date.now();
+  cleanupExpiredRateLimits(now);
+
+  // 检查防爆破锁定
+  const rateLimitEntry = failedAuthMap.get(clientIp);
+  if (rateLimitEntry && rateLimitEntry.lockedUntil > now) {
+    const remainSec = Math.ceil((rateLimitEntry.lockedUntil - now) / 1000);
+    return {
+      authorized: false,
+      status: 429,
+      errorCode: 'TOO_MANY_REQUESTS',
+      errorMessage: `认证失败次数过多，边缘安全系统已自动防护限流，请在 ${remainSec} 秒后重试`,
+    };
+  }
+
   const authHeader = request.headers.get('Authorization') || '';
   const token = authHeader.replace(/^Bearer\s+/i, '').trim();
 
-  if (!token) {
+  // 校验 Token 长度与格式防范超大报文 DoS 攻击
+  if (!token || token.length > 512) {
+    const prev = failedAuthMap.get(clientIp) || { count: 0, lockedUntil: 0 };
+    const nextCount = prev.count + 1;
+    failedAuthMap.set(clientIp, {
+      count: nextCount,
+      lockedUntil: nextCount >= MAX_FAILED_ATTEMPTS ? now + LOCKOUT_WINDOW_MS : 0,
+    });
+
     return {
       authorized: false,
       status: 401,
       errorCode: 'UNAUTHORIZED',
-      errorMessage: '缺少有效的 Authorization Bearer API Token 凭据',
+      errorMessage: token.length > 512
+        ? 'API Token 长度超出安全限制 (最大 512 字符)'
+        : '缺少有效的 Authorization Bearer API Token 凭据',
     };
   }
 
   const isMatched = await timingSafeEqualAsync(token, configuredToken);
   if (!isMatched) {
+    const prev = failedAuthMap.get(clientIp) || { count: 0, lockedUntil: 0 };
+    const nextCount = prev.count + 1;
+    const isLocked = nextCount >= MAX_FAILED_ATTEMPTS;
+    failedAuthMap.set(clientIp, {
+      count: nextCount,
+      lockedUntil: isLocked ? now + LOCKOUT_WINDOW_MS : 0,
+    });
+
     return {
       authorized: false,
-      status: 401,
-      errorCode: 'UNAUTHORIZED',
-      errorMessage: '无效的 API Token 访问凭据，请检查客户端密钥设置',
+      status: isLocked ? 429 : 401,
+      errorCode: isLocked ? 'TOO_MANY_REQUESTS' : 'UNAUTHORIZED',
+      errorMessage: isLocked
+        ? `API Token 验证连续失败达到上限，边缘防护已对该 IP 临时限流 60 秒`
+        : '无效的 API Token 访问凭据，请检查客户端密钥设置',
     };
   }
 
+  // 认证成功，清除失败计数
+  failedAuthMap.delete(clientIp);
   return { authorized: true };
 }

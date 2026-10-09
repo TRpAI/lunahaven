@@ -194,17 +194,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const handleDisable2FAClick = () => {
-    if (window.confirm('确定要关闭二步验证 (2FA) 吗？关闭后将仅依靠主密码保护站点。')) {
-      if (onDisable2FA) {
-        onDisable2FA();
-      } else {
-        onUpdateSettings({
-          isTwoFactorEnabled: false,
-          twoFactorSecret: '',
-          twoFactorBackupCodes: [],
-        });
-      }
-    }
+    setConfirmModal({
+      title: '关闭二步验证 (2FA)',
+      desc: '确定要关闭二步验证 (2FA) 吗？关闭后将仅依靠主密码保护站点安全。',
+      isDanger: true,
+      onConfirm: () => {
+        if (onDisable2FA) {
+          onDisable2FA();
+        } else {
+          onUpdateSettings({
+            isTwoFactorEnabled: false,
+            twoFactorSecret: '',
+            twoFactorBackupCodes: [],
+          });
+        }
+        showToast('info', '已关闭二步验证 (2FA)');
+      },
+    });
   };
 
   const handleCopyBackupCodes = () => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   ChevronDown,
@@ -39,6 +40,7 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedGiftId, setExpandedGiftId] = useState<string | null>(null);
+  const [deletingGift, setDeletingGift] = useState<SocialGiftRecord | null>(null);
 
   // 筛选与搜索状态
   const [searchKeyword, setSearchKeyword] = useState('');
@@ -436,9 +438,7 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm('确定删除该笔随礼记录吗？')) {
-                              onDeleteGift(g.id);
-                            }
+                            setDeletingGift(g);
                           }}
                           className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer"
                           title="删除"
@@ -737,6 +737,46 @@ export const GiftsView: React.FC<GiftsViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* 确认删除随礼记录弹窗 (无 window.confirm) */}
+      {deletingGift && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  确认删除该笔随礼记录？
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  将永久删除「{deletingGift.personName} · ¥{deletingGift.amount}」随礼记录，此操作不可撤销。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingGift(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteGift(deletingGift.id);
+                  setDeletingGift(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowDownRight,
   ArrowUpRight,
   Calendar,
@@ -124,6 +125,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedExpenseId, setExpandedExpenseId] = useState<string | null>(null);
+  const [deletingRecord, setDeletingRecord] = useState<ExpenseRecord | null>(null);
 
   // Filters
   const [selectedType, setSelectedType] = useState<'all' | ExpenseType>('all');
@@ -906,9 +908,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (window.confirm(`确定要删除这笔「${row.category} ¥${row.amount}」开销记录吗？`)) {
-                              onDeleteExpense(row.id);
-                            }
+                            setDeletingRecord(row);
                           }}
                           className="p-1.5 rounded-lg border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 cursor-pointer transition-colors"
                           title="删除"
@@ -1459,6 +1459,46 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* 确认删除记录弹窗 (无 window.confirm) */}
+      {deletingRecord && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  确认删除这笔开销记录？
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  将永久删除「{deletingRecord.category} · ¥{deletingRecord.amount}」记录，此操作不可撤销。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingRecord(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteExpense(deletingRecord.id);
+                  setDeletingRecord(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
           </div>
         </div>
       )}

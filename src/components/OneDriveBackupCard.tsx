@@ -66,6 +66,7 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isDisconnectConfirmOpen, setIsDisconnectConfirmOpen] = useState(false);
+  const [restoringFile, setRestoringFile] = useState<OneDriveBackupFile | null>(null);
 
   // Form State for configuration
   const [tokenInput, setTokenInput] = useState(config.accessToken || '');
@@ -215,13 +216,15 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
     }
   };
 
-  // 从指定历史快照恢复
-  const handleRestoreFile = async (file: OneDriveBackupFile) => {
+  // 从指定历史快照恢复 (触发二次确认弹窗)
+  const handleRestoreFile = (file: OneDriveBackupFile) => {
     if (!config.accessToken) return;
-    if (!window.confirm(`确定要从快照「${file.name}」恢复账本数据吗？当前本地数据将被覆盖。`)) {
-      return;
-    }
+    setRestoringFile(file);
+  };
 
+  const executeRestoreFile = async (file: OneDriveBackupFile) => {
+    if (!config.accessToken) return;
+    setRestoringFile(null);
     setIsRestoring(true);
     try {
       const restored = await downloadBackupFromOneDrive(config.accessToken, file.id);
@@ -632,6 +635,38 @@ export const OneDriveBackupCard: React.FC<OneDriveBackupCardProps> = ({
                 className="px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 恢复快照确认弹窗 (无 window.confirm) */}
+      {restoringFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-sm p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                确认恢复云盘快照？
+              </h3>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                确定要从快照「{restoringFile.name}」恢复账本数据吗？当前本地未备份的数据将被覆盖。
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setRestoringFile(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => executeRestoreFile(restoringFile)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer transition-colors"
+              >
+                确认恢复
               </button>
             </div>
           </div>

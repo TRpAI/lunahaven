@@ -17,13 +17,23 @@ export function validateSyncPayload(payload: any): { valid: boolean; errors: Val
   }
 
   // 防范原型污染攻击 (Prototype Pollution Protection)
-  const isDangerousObject = (obj: any): boolean => {
-    if (!obj || typeof obj !== 'object') return false;
-    return (
+  const isDangerousObject = (obj: any, depth = 0): boolean => {
+    if (!obj || typeof obj !== 'object' || depth > 10) return false;
+    if (
       Object.prototype.hasOwnProperty.call(obj, '__proto__') ||
       Object.prototype.hasOwnProperty.call(obj, 'constructor') ||
       Object.prototype.hasOwnProperty.call(obj, 'prototype')
-    );
+    ) {
+      return true;
+    }
+    for (const key of Object.keys(obj)) {
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') return true;
+      const val = obj[key];
+      if (val && typeof val === 'object' && isDangerousObject(val, depth + 1)) {
+        return true;
+      }
+    }
+    return false;
   };
 
   if (isDangerousObject(payload)) {
@@ -258,6 +268,9 @@ export function createErrorResponse(
         'Expires': '0',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
+        'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+        'Referrer-Policy': 'no-referrer',
+        'X-XSS-Protection': '0',
       },
     }
   );
@@ -291,6 +304,9 @@ export function createSuccessResponse(
         'Expires': '0',
         'X-Content-Type-Options': 'nosniff',
         'X-Frame-Options': 'DENY',
+        'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+        'Referrer-Policy': 'no-referrer',
+        'X-XSS-Protection': '0',
       },
     }
   );

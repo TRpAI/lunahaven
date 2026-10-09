@@ -98,6 +98,7 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
   const [isVehicleModalOpen, setIsVehicleModalOpen] = useState(false);
   const [editingVehicleId, setEditingVehicleId] = useState<string | null>(null);
   const [isVehicleListModalOpen, setIsVehicleListModalOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<{ title: string; desc: string; onConfirm: () => void } | null>(null);
 
   // Active Vehicle (若已清空则为 null，杜绝虚假默认车辆与假里程)
   const currentVehicle: VehicleProfile | null = useMemo(() => {
@@ -368,23 +369,20 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
         ? `\n⚠️ 该车型下包含 ${fCount} 笔补能记录与 ${mCount} 笔维保记录，删除车型将一并清除相关记录！`
         : '';
 
-    const confirmed = window.confirm(
-      `确定要删除车型「${vName}」吗？${warningDetail}\n\n此操作不可撤销，是否确认删除？`
-    );
-
-    if (!confirmed) return;
-
-    onDeleteVehicle(vId);
-
-    // 如果删除的是当前激活车型，自动切换到剩余的第一辆车
-    const remaining = vehicles.filter((v) => v.id !== vId);
-    if (remaining.length > 0) {
-      onChangeActiveVehicle(remaining[0].id);
-    } else {
-      onChangeActiveVehicle('');
-    }
-
-    setIsVehicleModalOpen(false);
+    setConfirmDelete({
+      title: `删除车型「${vName}」`,
+      desc: `确定要删除车型「${vName}」吗？${warningDetail}\n\n此操作不可撤销，是否确认删除？`,
+      onConfirm: () => {
+        onDeleteVehicle(vId);
+        const remaining = vehicles.filter((v) => v.id !== vId);
+        if (remaining.length > 0) {
+          onChangeActiveVehicle(remaining[0].id);
+        } else {
+          onChangeActiveVehicle('');
+        }
+        setIsVehicleModalOpen(false);
+      },
+    });
   };
 
   const handleSaveFuel = (e: React.FormEvent) => {
@@ -949,9 +947,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`确定删除 ${f.date} 的这笔补能记录吗？`)) {
-                                  onDeleteFuel(f.id);
-                                }
+                                setConfirmDelete({
+                                  title: '删除补能记录',
+                                  desc: `确定删除 ${f.date} 的这笔补能记录吗？此操作不可撤销。`,
+                                  onConfirm: () => onDeleteFuel(f.id),
+                                });
                               }}
                               className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
                               title="删除"
@@ -1113,9 +1113,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (window.confirm(`确定删除 ${f.date} 的这笔补能记录吗？`)) {
-                                  onDeleteFuel(f.id);
-                                }
+                                setConfirmDelete({
+                                  title: '删除补能记录',
+                                  desc: `确定删除 ${f.date} 的这笔补能记录吗？此操作不可撤销。`,
+                                  onConfirm: () => onDeleteFuel(f.id),
+                                });
                               }}
                               className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
                               title="删除"
@@ -1225,9 +1227,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
-                                  onDeleteMaintenance(m.id);
-                                }
+                                setConfirmDelete({
+                                  title: '删除维保记录',
+                                  desc: `确定删除 ${m.date} 的这笔维保记录「${m.title}」吗？此操作不可撤销。`,
+                                  onConfirm: () => onDeleteMaintenance(m.id),
+                                });
                               }}
                               className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
                               title="删除"
@@ -1373,9 +1377,11 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                             </button>
                             <button
                               onClick={() => {
-                                if (window.confirm(`确定删除 ${m.date} 的这笔维保记录吗？`)) {
-                                  onDeleteMaintenance(m.id);
-                                }
+                                setConfirmDelete({
+                                  title: '删除维保记录',
+                                  desc: `确定删除 ${m.date} 的这笔维保记录「${m.title}」吗？此操作不可撤销。`,
+                                  onConfirm: () => onDeleteMaintenance(m.id),
+                                });
                               }}
                               className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 cursor-pointer"
                               title="删除"
@@ -2136,6 +2142,47 @@ export const VehicleView: React.FC<VehicleViewProps> = ({
                 className="px-4 py-2 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800 cursor-pointer"
               >
                 关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* 确认删除弹窗 (无 window.confirm) */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  {confirmDelete.title}
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 whitespace-pre-line leading-relaxed">
+                  {confirmDelete.desc}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const cb = confirmDelete.onConfirm;
+                  setConfirmDelete(null);
+                  cb();
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer transition-colors"
+              >
+                确认删除
               </button>
             </div>
           </div>

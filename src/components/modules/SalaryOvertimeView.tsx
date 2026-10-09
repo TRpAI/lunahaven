@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowRight,
   Banknote,
   Building2,
@@ -244,6 +245,7 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
   defaultBaseSalary = 18000,
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'salary' | 'overtime' | 'linkage'>('salary');
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'salary' | 'overtime'; id: string; label: string } | null>(null);
 
   // --- Salary Modal State ---
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState(false);
@@ -1296,9 +1298,11 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (window.confirm(`确定删除 ${s.month} 月的薪资条记录吗？`)) {
-                                onDeleteSalary(s.id);
-                              }
+                              setDeleteConfirm({
+                                type: 'salary',
+                                id: s.id,
+                                label: `${s.month} 月薪资条`,
+                              });
                             }}
                             className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500 cursor-pointer"
                             title="删除此薪资条"
@@ -1616,11 +1620,13 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (window.confirm(`确定删除 ${o.date} 的加班记录吗？`)) {
-                                onDeleteOvertime(o.id);
-                              }
+                              setDeleteConfirm({
+                                type: 'overtime',
+                                id: o.id,
+                                label: `${o.date} 加班记录`,
+                              });
                             }}
-                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500"
+                            className="p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/30 text-zinc-400 hover:text-rose-500 cursor-pointer"
                             title="删除"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -3086,6 +3092,50 @@ export const SalaryOvertimeView: React.FC<SalaryOvertimeViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* 确认删除薪资/工时记录弹窗 (无 window.confirm) */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full max-w-md p-5 sm:p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  确认删除此条{deleteConfirm.type === 'salary' ? '薪资' : '工时'}记录？
+                </h3>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+                  将永久删除「{deleteConfirm.label}」，此操作不可撤销。
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (deleteConfirm.type === 'salary') {
+                    onDeleteSalary(deleteConfirm.id);
+                  } else {
+                    onDeleteOvertime(deleteConfirm.id);
+                  }
+                  setDeleteConfirm(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-700 text-white shadow-xs cursor-pointer transition-colors"
+              >
+                确认删除
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { getCorsHeaders, isOriginAllowed, verifyAuthorization } from './auth';
+import { getCorsHeaders, hashIpAddress, isOriginAllowed, verifyAuthorization } from './auth';
 import { ensureDatabaseSchema } from './schema';
 import { Env, SyncPayload, D1PreparedStatement, SyncMetaRecord } from './types';
 import { createErrorResponse, createSuccessResponse, sanitizeSettingsForStorage, validateSyncPayload } from './validation';
@@ -6,7 +6,11 @@ import { createErrorResponse, createSuccessResponse, sanitizeSettingsForStorage,
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const requestId = crypto.randomUUID();
+    const cfRay = request.headers.get('CF-Ray') || '';
     const corsHeaders = getCorsHeaders(request, env);
+    if (cfRay) {
+      corsHeaders['X-Edge-Ray'] = cfRay;
+    }
 
     // 1. 处理 CORS Preflight 预检请求 (收紧跨域保护)
     if (request.method === 'OPTIONS') {
@@ -251,13 +255,14 @@ export default {
         try {
           const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
           const userAgent = request.headers.get('User-Agent') || '';
+          const ipHash = await hashIpAddress(clientIp);
           await env.DB.prepare(
             `INSERT INTO audit_logs (id, action, resource, record_count, ip_hash, user_agent, created_at)
              VALUES (?, 'SYNC_PULL', 'batch', ?, ?, ?, ?)`
           ).bind(
             crypto.randomUUID(),
             totalReturned,
-            clientIp.slice(0, 16),
+            ipHash,
             userAgent.slice(0, 64),
             new Date().toISOString()
           ).run();
@@ -863,13 +868,14 @@ export default {
         try {
           const clientIp = request.headers.get('CF-Connecting-IP') || 'unknown';
           const userAgent = request.headers.get('User-Agent') || '';
+          const ipHash = await hashIpAddress(clientIp);
           await env.DB.prepare(
             `INSERT INTO audit_logs (id, action, resource, record_count, ip_hash, user_agent, created_at)
              VALUES (?, 'SYNC_PUSH', 'batch', ?, ?, ?, ?)`
           ).bind(
             crypto.randomUUID(),
             statements.length,
-            clientIp.slice(0, 16),
+            ipHash,
             userAgent.slice(0, 64),
             nowIso
           ).run();
